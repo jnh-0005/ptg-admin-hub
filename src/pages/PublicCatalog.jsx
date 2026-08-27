@@ -9,6 +9,7 @@ import {
   useLocation,
   useNavigate,
   useParams,
+  useSearchParams,
 } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -19,6 +20,7 @@ import {
   ChartBar,
   Check,
   ImageSquare,
+  List,
   MagnifyingGlass,
   Minus,
   Package,
@@ -31,6 +33,7 @@ import {
 
 import { spring } from "../lib/motion";
 import { brandOf, PUBLIC_CATALOG_PATH, resolvePhotoAssetUrl } from "../lib/storefront";
+import LogoLoop from "../components/LogoLoop";
 
 // A visitor never sees a real stock count (per docs/storefront-api-v1.md, the
 // public API returns only "available"/"unavailable") — this just bounds how
@@ -287,31 +290,13 @@ const BRAND_LOGOS = {
 };
 
 /**
- * Continuous auto-scrolling brand row — real brand names pulled from the
- * live catalog (never a hardcoded or fabricated list), shown as each
- * brand's own logo where we have real artwork for it, or its plain name
- * otherwise. Duplicated once for a seamless loop; pauses on hover/focus so
- * it never becomes unreadable to someone who wants to stop and look, and
- * respects prefers-reduced-motion by holding still.
+ * Brand row shown via the reusable LogoLoop component (src/components/LogoLoop.jsx).
+ * Real brand names pulled from the live catalog (never a hardcoded or
+ * fabricated list) — a brand with no real artwork on file (BRAND_LOGOS)
+ * falls back to its plain name rather than a fabricated or guessed mark.
  */
-function LogoMarquee({ items }) {
-  const reduce = useReducedMotion();
-  if (!items.length) return null;
-  const track = [...items, ...items];
-  return (
-    <div className="public-marquee" role="list" aria-label="Brands available">
-      <div className={`public-marquee-track ${reduce ? "is-static" : ""}`}>
-        {track.map((name, index) => {
-          const logo = BRAND_LOGOS[name];
-          return (
-            <span className="public-marquee-item" role="listitem" key={`${name}-${index}`} aria-hidden={index >= items.length}>
-              {logo ? <img src={logo} alt={name} /> : name}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
+function brandLogos(names) {
+  return names.map((name) => ({ src: BRAND_LOGOS[name], title: name, alt: name }));
 }
 
 function ProductImage({ product, choice, className = "" }) {
@@ -327,6 +312,103 @@ function ProductImage({ product, choice, className = "" }) {
     </div>
   );
   return <div className={className}>{image}</div>;
+}
+
+/**
+ * One product tile, shared by the shop grid and the product page's "You may
+ * also like" row so both render identically — no duplicated card markup.
+ * `addToCart`/`toggleCompare` are optional: omit them (as the related-products
+ * row does) to get a plain browsable card with no quick-add or compare toggle.
+ * `motionProps` lets a caller opt into the shop grid's scroll-reveal without
+ * baking that animation into every use of the card.
+ */
+function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded, onAdded, motionProps }) {
+  const inStock = product.choices.some(available);
+  // Any choice's real ships-in estimate — a product can have several colours
+  // on different incoming batches, so this just shows whichever one actually
+  // has a date on file rather than guessing a single figure for the card.
+  const shipsIn = !inStock ? product.choices.find((c) => c.preorder?.ships_in)?.preorder?.ships_in : null;
+  const fromPrice = Math.min(...product.choices.map((choice) => choice.price));
+  const singleChoice = product.choices.length === 1 ? product.choices[0] : null;
+  const justAddedThis = justAdded === product.id;
+  const comparing = compareIds?.includes(product.id);
+
+  return (
+    <motion.article className="public-card" {...motionProps}>
+      <div className="public-card-media">
+        <Link to={`paddle/${product.id}`} aria-label={`View ${product.name}`}>
+          <ProductImage product={product} choice={product.choices[0]} className="public-card-image" />
+          {!inStock && <span className="public-card-badge is-preorder">Pre-order</span>}
+        </Link>
+        {toggleCompare && (
+          <button
+            type="button"
+            className={`public-card-compare ${comparing ? "is-active" : ""}`}
+            disabled={!comparing && compareIds.length >= MAX_COMPARE}
+            onClick={() => toggleCompare(product.id)}
+            aria-pressed={comparing}
+          >
+            {comparing ? <Check size={11} /> : <ChartBar size={11} />} Compare
+          </button>
+        )}
+      </div>
+      <div className="public-card-body">
+        <Link to={`paddle/${product.id}`}>
+          <div className="public-card-name"><span>{product.brand}</span><h2>{product.name}</h2></div>
+        </Link>
+        {shipsIn && <p className="public-card-shipsin">{shipsIn}</p>}
+        <div className="public-card-meta">
+          <strong>{money(fromPrice)}</strong>
+          {addToCart && (singleChoice ? (
+            <button
+              type="button"
+              className={`public-quick-add ${justAddedThis ? "is-added" : ""}`}
+              aria-label={available(singleChoice) ? `Add ${product.name} to cart` : `Pre-order ${product.name}`}
+              onClick={() => {
+                addToCart(product, singleChoice, 1);
+                onAdded?.(product.id);
+              }}
+            >
+              {justAddedThis ? <Check size={15} /> : <Plus size={15} />}
+            </button>
+          ) : (
+            <Link to={`paddle/${product.id}`} className="public-quick-add" aria-label={`Choose a colour for ${product.name}`}>
+              <Plus size={15} />
+            </Link>
+          ))}
+        </div>
+      </div>
+    </motion.article>
+  );
+}
+
+/**
+ * A horizontally scrollable row (snap + native touch/trackpad scroll), with
+ * arrow buttons for a mouse — used for the first few paddles ahead of the
+ * featured band, so the opening of the shop reads as a curated strip
+ * instead of another static grid row. Just a scroll container; it doesn't
+ * own what's inside it.
+ */
+function ScrollRow({ children, ariaLabel }) {
+  const trackRef = useRef(null);
+  const scrollBy = (dir) => {
+    const track = trackRef.current;
+    if (!track) return;
+    track.scrollBy({ left: dir * Math.min(track.clientWidth * 0.8, 560), behavior: "smooth" });
+  };
+  return (
+    <div className="public-scroll-row-wrap">
+      <button type="button" className="public-scroll-arrow is-prev" aria-label="Scroll left" onClick={() => scrollBy(-1)}>
+        <ArrowLeft size={16} />
+      </button>
+      <div className="public-scroll-row" role="list" aria-label={ariaLabel} ref={trackRef}>
+        {children}
+      </div>
+      <button type="button" className="public-scroll-arrow is-next" aria-label="Scroll right" onClick={() => scrollBy(1)}>
+        <ArrowRight size={16} />
+      </button>
+    </div>
+  );
 }
 
 export default function PublicCatalog() {
@@ -442,15 +524,38 @@ export default function PublicCatalog() {
   };
   const removeLine = (key) => setCart((current) => current.filter((line) => line.key !== key));
 
+  // Adding a paddle opens the cart drawer for a moment of confirmation
+  // instead of silently updating a badge — the drawer just reads the same
+  // `cart` state above, so nothing about what addToCart stores changes.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const addToCartAndOpen = (product, choice, quantity = 1) => {
+    addToCart(product, choice, quantity);
+    setDrawerOpen(true);
+  };
+
   return (
     <BrowserRouter basename={PUBLIC_CATALOG_PATH}>
       <div className="public-shell">
         <Routes>
-          <Route element={<Layout cartCount={cartCount} compareCount={compareIds.length} />}>
-            <Route index element={<Shop addToCart={addToCart} compareIds={compareIds} toggleCompare={toggleCompare} />} />
+          <Route
+            element={
+              <Layout
+                cartCount={cartCount}
+                compareCount={compareIds.length}
+                cart={cart}
+                cartTotal={cartTotal}
+                drawerOpen={drawerOpen}
+                onCloseDrawer={() => setDrawerOpen(false)}
+                onQuantity={updateQuantity}
+                onRemove={removeLine}
+                reduce={reduce}
+              />
+            }
+          >
+            <Route index element={<Shop addToCart={addToCartAndOpen} compareIds={compareIds} toggleCompare={toggleCompare} />} />
             <Route
               path="paddle/:id"
-              element={<ProductPage addToCart={addToCart} compareIds={compareIds} toggleCompare={toggleCompare} />}
+              element={<ProductPage addToCart={addToCartAndOpen} compareIds={compareIds} toggleCompare={toggleCompare} />}
             />
             <Route
               path="compare"
@@ -465,6 +570,7 @@ export default function PublicCatalog() {
               element={<CheckoutPage cart={cart} total={cartTotal} onSent={() => setCart([])} reduce={reduce} />}
             />
             <Route path="order/:orderNumber" element={<OrderConfirmation />} />
+            <Route path="faq" element={<FaqPage />} />
             <Route path="*" element={<Navigate to="" replace />} />
           </Route>
         </Routes>
@@ -502,9 +608,178 @@ function BackToTop() {
   );
 }
 
+/**
+ * Right-side slide-over shown after adding a paddle, or from the cart icon —
+ * reads the same `cart`/`total` state the full /cart page reads, and calls
+ * the same `onQuantity`/`onRemove` handlers; it never owns cart data itself.
+ * "View cart" still routes to the full page, which stays exactly as it was
+ * for anyone who links or reloads directly into it.
+ */
+function CartDrawer({ open, onClose, cart, total, onQuantity, onRemove, reduce }) {
+  useEffect(() => {
+    if (!open) return;
+    document.documentElement.classList.add("public-lock");
+    return () => document.documentElement.classList.remove("public-lock");
+  }, [open]);
+
+  const justAdded = cart.length ? cart[cart.length - 1] : null;
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            className="public-drawer-overlay"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          />
+          <motion.aside
+            className="public-drawer"
+            role="dialog"
+            aria-label="Cart"
+            initial={reduce ? { opacity: 0 } : { x: "100%" }}
+            animate={reduce ? { opacity: 1 } : { x: 0 }}
+            exit={reduce ? { opacity: 0 } : { x: "100%" }}
+            transition={spring}
+          >
+            <div className="public-drawer-head">
+              <h2>Cart</h2>
+              <button type="button" className="public-drawer-close" onClick={onClose} aria-label="Close cart">
+                <X size={18} />
+              </button>
+            </div>
+
+            {justAdded && (
+              <div className="public-drawer-confirm">
+                <div className="public-cart-thumb">
+                  {justAdded.photo ? <img src={justAdded.photo} alt="" /> : <ImageSquare size={18} />}
+                </div>
+                <span>Added {justAdded.name} to your cart</span>
+              </div>
+            )}
+
+            {cart.length === 0 ? (
+              <div className="public-drawer-empty">
+                <ShoppingBag size={26} />
+                <p>Your cart is empty.</p>
+                <button type="button" className="public-state-link" onClick={onClose}>Continue shopping</button>
+              </div>
+            ) : (
+              <ul className="public-drawer-lines">
+                {cart.map((line) => (
+                  <li className="public-cart-line" key={line.key}>
+                    <div className="public-cart-thumb">{line.photo ? <img src={line.photo} alt="" /> : <ImageSquare size={18} />}</div>
+                    <div className="public-cart-copy">
+                      <b>{line.name}</b>
+                      <small>{line.color}</small>
+                      <strong>{money(line.price * line.quantity)}</strong>
+                    </div>
+                    <div className="public-cart-line-actions">
+                      <div className="public-stepper">
+                        <button type="button" onClick={() => onQuantity(line.key, -1)} aria-label={`Remove one ${line.name}`}><Minus size={13} /></button>
+                        <span>{line.quantity}</span>
+                        <button type="button" onClick={() => onQuantity(line.key, 1)} aria-label={`Add one ${line.name}`}><Plus size={13} /></button>
+                      </div>
+                      <button type="button" className="public-remove" onClick={() => onRemove(line.key)} aria-label={`Remove ${line.name} from cart`}>
+                        <Trash size={15} />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {cart.length > 0 && (
+              <div className="public-drawer-foot">
+                <div className="public-total"><span>Subtotal</span><strong>{money(total)}</strong></div>
+                <Link to="checkout" className="public-primary" onClick={onClose}>Checkout <ArrowRight size={16} /></Link>
+                <Link to="cart" className="public-secondary-link" onClick={onClose}>View cart</Link>
+              </div>
+            )}
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Full-screen mobile drawer nav: real destinations only (Shop, its brands, Cart) — no stub links. */
+function MobileNav({ open, onClose, brands, cartCount }) {
+  useEffect(() => {
+    if (!open) return;
+    document.documentElement.classList.add("public-lock");
+    return () => document.documentElement.classList.remove("public-lock");
+  }, [open]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            className="public-mobile-drawer-overlay"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          />
+          <motion.div
+            className="public-mobile-drawer"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={spring}
+          >
+            <div className="public-mobile-drawer-head">
+              <img src="/images/ptg-logo-header.png" alt="Paddle To Go" className="public-logo" />
+              <button type="button" className="public-drawer-close" onClick={onClose} aria-label="Close menu, mobile nav">
+                <X size={18} />
+              </button>
+            </div>
+            <nav className="public-mobile-drawer-body" aria-label="Storefront">
+              <Link to="" onClick={onClose}>Shop all paddles</Link>
+              <Link to="faq" onClick={onClose}>FAQs</Link>
+              {brands.length > 0 && (
+                <>
+                  <span className="public-mobile-drawer-section">Brands</span>
+                  {brands.map((name) => (
+                    <Link className="public-mobile-brand" key={name} to={`/?brand=${encodeURIComponent(name)}`} onClick={onClose}>
+                      {name}
+                    </Link>
+                  ))}
+                </>
+              )}
+              <Link to="cart" onClick={onClose}>Cart{cartCount > 0 ? ` (${cartCount})` : ""}</Link>
+            </nav>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
 /** Header + footer chrome shared by every storefront route; the routed page fills the middle. */
-function Layout({ cartCount, compareCount = 0 }) {
+function Layout({
+  cartCount,
+  compareCount = 0,
+  cart,
+  cartTotal,
+  drawerOpen,
+  onCloseDrawer,
+  onQuantity,
+  onRemove,
+  reduce,
+}) {
   const location = useLocation();
+  const { products } = useShopData();
+  const brands = useMemo(
+    () => Array.from(new Set(products.map((product) => product.brand))).filter(Boolean).sort(),
+    [products],
+  );
+
   // No point telling someone "N paddles selected, go compare" while they're
   // already on the compare page — or mid-checkout, where it's just noise
   // competing with "Continue to checkout"/"Place order" for the same fixed
@@ -521,19 +796,86 @@ function Layout({ cartCount, compareCount = 0 }) {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
+  // The nav is solid on every route from the start — only its height and
+  // shadow change on scroll, nothing about color or contrast, so there's
+  // nothing to desync between breakpoints or flicker mid-transition.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const navigate = useNavigate();
+  const submitSearch = (event) => {
+    event.preventDefault();
+    const term = searchTerm.trim();
+    navigate(term ? `/?q=${encodeURIComponent(term)}` : "/");
+    setSearchOpen(false);
+  };
+
   return (
     <>
-      <header className="public-nav">
+      <header className={`public-nav ${scrolled ? "is-scrolled" : ""}`}>
         <Link to="" className="public-nav-brand" aria-label="Paddle To Go storefront">
-          <img src="/images/ptg-logo-inverse.png" alt="Paddle To Go" className="public-logo" />
+          <img src="/images/ptg-logo-inverse.png" alt="Paddle To Go" className="public-nav-logo" />
         </Link>
+
         <nav className="public-nav-links" aria-label="Storefront">
-          <Link to="">Shop</Link>
+          <div>
+            <Link to="" className="public-nav-shop-link">Shop <CaretRight size={10} weight="bold" style={{ transform: "rotate(90deg)" }} /></Link>
+            <div className="public-nav-dropdown">
+              <Link to="" className="public-nav-dropdown-all">All paddles</Link>
+              {brands.map((name) => (
+                <Link key={name} to={`/?brand=${encodeURIComponent(name)}`}>{name}</Link>
+              ))}
+            </div>
+          </div>
+          <Link to="faq" className="public-nav-shop-link">FAQs</Link>
         </nav>
-        <Link to="cart" className="public-cart-link" aria-label={`Cart, ${cartCount} item${cartCount === 1 ? "" : "s"}`}>
-          <ShoppingBag size={19} />
-          {cartCount > 0 && <b>{cartCount}</b>}
-        </Link>
+
+        <div className="public-nav-spacer" />
+
+        <div className="public-nav-actions">
+          <form className="public-nav-search" onSubmit={submitSearch}>
+            <div className={`public-nav-search-field ${searchOpen ? "is-open" : ""}`}>
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search model or brand"
+                aria-label="Search model or brand"
+                tabIndex={searchOpen ? 0 : -1}
+              />
+            </div>
+            <button
+              type="button"
+              className="public-nav-icon-btn"
+              aria-label="Search"
+              onClick={() => setSearchOpen((open) => !open)}
+            >
+              <MagnifyingGlass size={18} />
+            </button>
+          </form>
+
+          <Link to="cart" className="public-nav-cart" aria-label={`Cart, ${cartCount} item${cartCount === 1 ? "" : "s"}`}>
+            <ShoppingBag size={18} />
+            {cartCount > 0 && <b>{cartCount}</b>}
+          </Link>
+
+          <button
+            type="button"
+            className="public-nav-mobile-toggle"
+            aria-label="Open menu"
+            onClick={() => setMobileOpen(true)}
+          >
+            <List size={20} />
+          </button>
+        </div>
       </header>
 
       <Outlet context={{}} />
@@ -577,8 +919,39 @@ function Layout({ cartCount, compareCount = 0 }) {
       </footer>
 
       <BackToTop />
+
+      <MobileNav open={mobileOpen} onClose={() => setMobileOpen(false)} brands={brands} cartCount={cartCount} />
+      <CartDrawer
+        open={drawerOpen}
+        onClose={onCloseDrawer}
+        cart={cart}
+        total={cartTotal}
+        onQuantity={onQuantity}
+        onRemove={onRemove}
+        reduce={reduce}
+      />
     </>
   );
+}
+
+/**
+ * True once the viewport is at least `minWidth` — used both for the mobile
+ * (2-up grid, <640px) pagination gate and the desktop (4-up grid, ≥960px)
+ * opening-row size, each keyed to the same breakpoint the grid's own
+ * column count already switches on, so they stay in sync with it.
+ */
+function useMinWidth(minWidth) {
+  const [matches, setMatches] = useState(
+    () => typeof window !== "undefined" && window.innerWidth >= minWidth,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${minWidth}px)`);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [minWidth]);
+  return matches;
 }
 
 function useShopData() {
@@ -617,6 +990,34 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
   const [category, setCategory] = useState("All");
   const [brand, setBrand] = useState("All brands");
   const [sort, setSort] = useState("featured");
+  // Everything currently fits in one screenful-and-a-bit at ~24 products,
+  // but "show N, reveal more on demand" is cheap insurance against a grid
+  // that gets unwieldy as the catalog grows, and it never blocks anyone —
+  // it only ever grows, never re-collapses.
+  const PAGE_SIZE = 8;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // Pagination only kicks in below the desktop (4-up) grid — desktop has
+  // the horizontal room to just show everything, so "Load More" would be
+  // solving a problem that doesn't exist there yet. The opening row also
+  // widens from 3 to 4 paddles at that same point.
+  const isMobile = !useMinWidth(640);
+  const isDesktopGrid = useMinWidth(960);
+  // 5 on desktop, not 4 — at 4, all of them already fit in the visible
+  // scroll-row width with nothing left offscreen, so the arrow buttons
+  // render but have nothing to actually scroll to. 5 guarantees overflow.
+  const openingCount = isDesktopGrid ? 5 : 3;
+
+  // The nav's Shop dropdown and mobile menu link here as `/?brand=Selkirk`,
+  // and the nav search submits as `/?q=omni` — both just seed this page's own
+  // filter state once, they don't drive a separate URL-based filtering system.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const qBrand = searchParams.get("brand");
+    const qSearch = searchParams.get("q");
+    if (qBrand) setBrand(qBrand);
+    if (qSearch) setSearch(qSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const categories = useMemo(
     () => ["All", ...Array.from(new Set(products.map((product) => product.category).filter(Boolean))).sort()],
@@ -626,12 +1027,21 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
     () => ["All brands", ...Array.from(new Set(products.map((product) => product.brand))).sort()],
     [products],
   );
+  // Guarded on `products.length` so a `?brand=`/`?q=` from the nav survives
+  // the moment before the catalog has loaded — without it, `brands` starts
+  // as just ["All brands"], the query-provided brand doesn't match it yet,
+  // and this would silently reset the filter before the real list arrives.
   useEffect(() => {
-    if (!categories.includes(category)) setCategory("All");
-  }, [category, categories]);
+    if (products.length && !categories.includes(category)) setCategory("All");
+  }, [category, categories, products.length]);
   useEffect(() => {
-    if (!brands.includes(brand)) setBrand("All brands");
-  }, [brand, brands]);
+    if (products.length && !brands.includes(brand)) setBrand("All brands");
+  }, [brand, brands, products.length]);
+  // A new filter/sort is a new result set — always reveal it from the top,
+  // never leave someone on page 3 of a search that now returns two items.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [search, category, brand, sort]);
 
   const filtered = products
     .filter((product) => {
@@ -650,19 +1060,40 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
       return 0;
     });
 
-  const availableCount = products.reduce((total, product) => total + product.choices.filter(available).length, 0);
+  // The featured-product band only appears on the true default view — the
+  // moment someone actually filters or searches, the plain grid takes over
+  // so the band never sits in front of (or contradicts) real results.
+  // `filtered[0]` in "Featured" order is real catalog order, never an
+  // invented "most important" pick.
+  const isDefaultView = sort === "featured" && category === "All" && brand === "All brands" && !search.trim();
+  const showFeatured = isDefaultView && filtered.length >= 4;
+  const featuredProduct = showFeatured ? filtered[0] : null;
+  const gridProducts = showFeatured ? filtered.slice(1) : filtered;
+  // Paginated on mobile only: only the current page's worth of gridProducts
+  // is ever split into first/second slice, so "Load More" is really just
+  // growing this window — the featured band itself is unaffected either
+  // way. Desktop always gets the full list, no pagination at all.
+  let visibleGridProducts = isMobile ? gridProducts.slice(0, visibleCount) : gridProducts;
+  const cappedByPaging = visibleGridProducts.length < gridProducts.length;
+  // Never end the visible run on a lone odd card right above "Load More" —
+  // the 2-up mobile grid should always close on a full pair there. Only
+  // trims when there's actually more to reveal; the true end of a filtered
+  // result list still gets to show its real (possibly odd) final count,
+  // centered, same as before.
+  if (isMobile && cappedByPaging) {
+    const afterOpeningRow = showFeatured ? visibleGridProducts.length - openingCount : visibleGridProducts.length;
+    if (afterOpeningRow % 2 !== 0) visibleGridProducts = visibleGridProducts.slice(0, -1);
+  }
+  const firstSlice = showFeatured ? visibleGridProducts.slice(0, openingCount) : visibleGridProducts;
+  const secondSlice = showFeatured ? visibleGridProducts.slice(openingCount) : [];
+  const hasMore = isMobile && visibleGridProducts.length < gridProducts.length;
 
   return (
     <>
       <section className="public-hero">
         <img className="public-hero-bg" src="/images/ptg-court-banner-v2.png" alt="Paddle To Go — Cagayan de Oro, Philippines" />
         <div className="public-hero-scrim" />
-        <Reveal className="public-hero-float" delay={0.1}>
-          <strong>{products.length || "—"}</strong>
-          <span>{availableCount > 0 ? `models · ${availableCount} colours in stock` : "models in the current lineup"}</span>
-        </Reveal>
         <Reveal as="div" className="public-hero-text">
-          <span className="public-kicker public-kicker-on-dark">CURRENT LINE-UP</span>
           <h1>Reserve your next paddle.</h1>
           <p>Pick your model and colour, then hold it with a 50% deposit — no account, no waiting on a reply.</p>
           <a
@@ -679,12 +1110,18 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
       </section>
 
       <section className="public-feature">
-        <LogoMarquee items={brands.filter((item) => item !== "All brands")} />
+        <LogoLoop
+          logos={brandLogos(brands.filter((item) => item !== "All brands"))}
+          speed={36}
+          logoHeight={32}
+          gap={56}
+          fadeOut
+          ariaLabel="Brands available"
+        />
       </section>
 
       <main className="public-main" id="shop">
       <Reveal as="section" className="public-page-head public-page-head-compact">
-        <span className="public-kicker">SHOP</span>
         <h2>Find your paddle</h2>
         <span className={`public-live ${reconnecting ? "is-offline" : ""}`}>
           <i /> {reconnecting ? "Reconnecting" : "Live price and availability"}
@@ -739,71 +1176,103 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
         </section>
       )}
       {status === "ready" && filtered.length > 0 && (
-        <motion.section className="public-grid" layout>
-          {filtered.map((product, index) => {
-            const inStock = product.choices.some(available);
-            // Any choice's real ships-in estimate — a product can have
-            // several colours on different incoming batches, so this just
-            // shows whichever one actually has a date on file rather than
-            // guessing a single figure for the whole card.
-            const shipsIn = !inStock ? product.choices.find((c) => c.preorder?.ships_in)?.preorder?.ships_in : null;
-            const fromPrice = Math.min(...product.choices.map((choice) => choice.price));
-            const singleChoice = product.choices.length === 1 ? product.choices[0] : null;
-            const justAddedThis = justAdded === product.id;
-            return (
-              <motion.article
-                className="public-card"
-                key={product.id}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-40px" }}
-                transition={{ duration: 0.5, delay: (index % 4) * 0.06, ease: [0.25, 1, 0.5, 1] }}
-              >
-                <Link to={`paddle/${product.id}`} aria-label={`View ${product.name}`}>
-                  <ProductImage product={product} choice={product.choices[0]} className="public-card-image" />
-                  {!inStock && <span className="public-card-badge is-preorder">Pre-order</span>}
-                </Link>
-                <div className="public-card-body">
-                  <Link to={`paddle/${product.id}`}>
-                    <div className="public-card-name"><span>{product.brand}</span><h2>{product.name}</h2></div>
-                  </Link>
-                  {shipsIn && <p className="public-card-shipsin">{shipsIn}</p>}
-                  <div className="public-card-meta">
-                    <strong>{money(fromPrice)}</strong>
-                    {singleChoice ? (
-                      <button
-                        type="button"
-                        className={`public-quick-add ${justAddedThis ? "is-added" : ""}`}
-                        aria-label={available(singleChoice) ? `Add ${product.name} to cart` : `Pre-order ${product.name}`}
-                        onClick={() => {
-                          addToCart(product, singleChoice, 1);
-                          setJustAdded(product.id);
-                          window.setTimeout(() => setJustAdded((current) => (current === product.id ? null : current)), 1600);
-                        }}
-                      >
-                        {justAddedThis ? <Check size={15} /> : <Plus size={15} />}
-                      </button>
-                    ) : (
-                      <Link to={`paddle/${product.id}`} className="public-quick-add" aria-label={`Choose a colour for ${product.name}`}>
-                        <Plus size={15} />
-                      </Link>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className={`public-compare-toggle ${compareIds.includes(product.id) ? "is-active" : ""}`}
-                    disabled={!compareIds.includes(product.id) && compareIds.length >= MAX_COMPARE}
-                    onClick={() => toggleCompare(product.id)}
-                    aria-pressed={compareIds.includes(product.id)}
-                  >
-                    {compareIds.includes(product.id) ? <Check size={12} /> : null} Compare
-                  </button>
+        <>
+          {showFeatured ? (
+            // Only the true default view opens with a scrollable strip —
+            // the moment a real filter/search is active this same slice
+            // renders as a plain grid below, so scrolling never becomes
+            // the only way to see actual search results.
+            <ScrollRow ariaLabel="Featured paddles">
+              {firstSlice.map((product) => (
+                <div className="public-scroll-item" key={product.id}>
+                  <ProductCard
+                    product={product}
+                    addToCart={addToCart}
+                    compareIds={compareIds}
+                    toggleCompare={toggleCompare}
+                    justAdded={justAdded}
+                    onAdded={(id) => {
+                      setJustAdded(id);
+                      window.setTimeout(() => setJustAdded((current) => (current === id ? null : current)), 1600);
+                    }}
+                  />
                 </div>
-              </motion.article>
-            );
-          })}
-        </motion.section>
+              ))}
+            </ScrollRow>
+          ) : (
+            <motion.section className="public-grid" layout>
+              {firstSlice.map((product, index) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  addToCart={addToCart}
+                  compareIds={compareIds}
+                  toggleCompare={toggleCompare}
+                  justAdded={justAdded}
+                  onAdded={(id) => {
+                    setJustAdded(id);
+                    window.setTimeout(() => setJustAdded((current) => (current === id ? null : current)), 1600);
+                  }}
+                  motionProps={{
+                    layout: true,
+                    initial: { opacity: 0, y: 14 },
+                    whileInView: { opacity: 1, y: 0 },
+                    viewport: { once: true, margin: "-40px" },
+                    transition: { duration: 0.45, delay: (index % 4) * 0.05, ease: [0.25, 1, 0.5, 1] },
+                  }}
+                />
+              ))}
+            </motion.section>
+          )}
+
+          {featuredProduct && (
+            <Reveal as="section" className="public-featured-band">
+              <div className="public-featured-media">
+                <ProductImage product={featuredProduct} choice={featuredProduct.choices[0]} />
+              </div>
+              <div className="public-featured-copy">
+                <span className="public-featured-brand">{featuredProduct.brand}</span>
+                <h2>{featuredProduct.name}</h2>
+                <strong>{money(Math.min(...featuredProduct.choices.map((c) => c.price)))}</strong>
+                <Link to={`paddle/${featuredProduct.id}`} className="public-featured-cta">
+                  Shop this paddle <ArrowRight size={15} />
+                </Link>
+              </div>
+            </Reveal>
+          )}
+
+          {secondSlice.length > 0 && (
+            <motion.section className="public-grid" layout>
+              {secondSlice.map((product, index) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  addToCart={addToCart}
+                  compareIds={compareIds}
+                  toggleCompare={toggleCompare}
+                  justAdded={justAdded}
+                  onAdded={(id) => {
+                    setJustAdded(id);
+                    window.setTimeout(() => setJustAdded((current) => (current === id ? null : current)), 1600);
+                  }}
+                  motionProps={{
+                    layout: true,
+                    initial: { opacity: 0, y: 14 },
+                    whileInView: { opacity: 1, y: 0 },
+                    viewport: { once: true, margin: "-40px" },
+                    transition: { duration: 0.45, delay: (index % 4) * 0.05, ease: [0.25, 1, 0.5, 1] },
+                  }}
+                />
+              ))}
+            </motion.section>
+          )}
+
+          {hasMore && (
+            <button type="button" className="public-load-more" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
+              Load more <CaretRight size={12} weight="bold" style={{ transform: "rotate(90deg)" }} />
+            </button>
+          )}
+        </>
       )}
       {status === "ready" && filtered.length === 0 && (
         <section className="public-state">
@@ -812,6 +1281,22 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
           <p>Try another model or clear your filters.</p>
           <button type="button" onClick={() => { setSearch(""); setBrand("All brands"); setCategory("All"); }}>Show all paddles</button>
         </section>
+      )}
+
+      {status === "ready" && filtered.length > 0 && (
+        <Reveal as="section" className="public-editorial-band">
+          <div className="public-editorial-media">
+            <img src="/images/ptg-court-banner-v2.png" alt="" />
+          </div>
+          <div className="public-editorial-copy">
+            <h2>Sourced direct, held for you.</h2>
+            <p>
+              Paddle To Go imports pickleball paddles and gear into the Philippines in batches, so
+              a colour that's out today is simply reserved for the next shipment — never sold out
+              for good.
+            </p>
+          </div>
+        </Reveal>
       )}
       </main>
     </>
@@ -872,6 +1357,19 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
   const spec = specFor(product.name);
   const comparing = compareIds.includes(product.id);
   const compareDisabled = !comparing && compareIds.length >= MAX_COMPARE;
+
+  // Real sibling products only — same category first, then same brand,
+  // filling in up to 4, current paddle excluded. Never a fabricated
+  // "recommended for you" pick.
+  const relatedProducts = [
+    ...products.filter((item) => item.id !== product.id && item.category && item.category === product.category),
+    ...products.filter(
+      (item) =>
+        item.id !== product.id &&
+        item.brand === product.brand &&
+        !(item.category && item.category === product.category),
+    ),
+  ].slice(0, 4);
 
   return (
     <div className="public-product-stage">
@@ -999,27 +1497,64 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
           <Link to="../cart" className="public-secondary-link">View cart <ArrowRight size={13} /></Link>
         )}
 
-        <div className="public-details-card public-details-plain">
-          <h3>Details</h3>
-          <dl>
-            <div><dt>Brand</dt><dd>{product.brand}</dd></div>
-            {product.category && <div><dt>Category</dt><dd>{product.category}</dd></div>}
-            {choice?.sku && <div><dt>SKU</dt><dd>{choice.sku}</dd></div>}
-            <div><dt>Deposit to reserve</dt><dd>{money((choice?.price || 0) / 2)}</dd></div>
-          </dl>
-        </div>
-
-        {spec && (
-          <div className="public-details-card">
-            <h3>Technology</h3>
-            <dl>
-              <div><dt>Core</dt><dd>{spec.core}</dd></div>
-              <div><dt>Surface</dt><dd>{spec.surface}</dd></div>
-              <div><dt>Weight</dt><dd>{spec.weight}</dd></div>
-            </dl>
-          </div>
-        )}
+        <Accordion
+          items={[
+            {
+              title: "Details",
+              rows: [
+                { label: "Brand", value: product.brand },
+                ...(product.category ? [{ label: "Category", value: product.category }] : []),
+                ...(choice?.sku ? [{ label: "SKU", value: choice.sku }] : []),
+                { label: "Deposit to reserve", value: money((choice?.price || 0) / 2) },
+              ],
+            },
+            ...(spec
+              ? [
+                  {
+                    title: "Technology",
+                    rows: [
+                      { label: "Core", value: spec.core },
+                      { label: "Surface", value: spec.surface },
+                      { label: "Weight", value: spec.weight },
+                    ],
+                  },
+                ]
+              : []),
+          ]}
+        />
       </section>
+
+      {relatedProducts.length > 0 && (
+        <Reveal as="section" className="public-related">
+          <h2>You may also like</h2>
+          <div className="public-grid">
+            {relatedProducts.map((item) => (
+              <ProductCard key={item.id} product={item} addToCart={addToCart} />
+            ))}
+          </div>
+        </Reveal>
+      )}
+    </div>
+  );
+}
+
+/** A collapsed-by-default disclosure list — replaces the old always-open detail cards. First section starts open so the page isn't entirely blank specs. */
+function Accordion({ items }) {
+  return (
+    <div className="public-accordion">
+      {items.map((item, index) => (
+        <details className="public-accordion-item" key={item.title} open={index === 0}>
+          <summary>
+            {item.title}
+            <Plus size={14} className="public-accordion-icon" />
+          </summary>
+          <dl className="public-accordion-body">
+            {item.rows.map((row) => (
+              <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>
+            ))}
+          </dl>
+        </details>
+      ))}
     </div>
   );
 }
@@ -1063,7 +1598,6 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
   return (
     <main className="public-main">
       <section className="public-page-head public-page-head-compact">
-        <span className="public-kicker">COMPARE</span>
         <div className="public-compare-heading-row">
           <h1>{selected.length} paddle{selected.length === 1 ? "" : "s"}</h1>
           <button type="button" className="public-compare-clear" onClick={clearCompare}>
@@ -1204,7 +1738,6 @@ function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
   return (
     <main className="public-main">
       <section className="public-page-head public-page-head-compact">
-        <span className="public-kicker">YOUR ORDER</span>
         <h1>Cart</h1>
       </section>
 
@@ -1463,7 +1996,6 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
     <main className="public-main">
       <section className="public-page-head public-page-head-compact">
         <Link to="../cart" className="public-back-link" aria-label="Back to cart"><ArrowLeft size={16} /> Back to cart</Link>
-        <span className="public-kicker">50% DEPOSIT · {money(total / 2)}</span>
         <h1>Checkout</h1>
       </section>
 
@@ -1728,6 +2260,69 @@ function CatalogSkeleton() {
   return <section className="public-grid public-skeleton" aria-label="Loading paddles">{Array.from({ length: 6 }).map((_, index) => <div key={index}><i /><span /><b /></div>)}</section>;
 }
 
+/**
+ * Real store policy only — every answer here restates something already
+ * stated elsewhere in the storefront (checkout copy, the pre-order note,
+ * PAYMENT_METHODS, PTG_MESSENGER_URL) rather than inventing new terms.
+ */
+function FaqPage() {
+  return (
+    <main className="public-main">
+      <section className="public-page-head public-page-head-compact">
+        <h1>FAQs</h1>
+        <p>How reserving a paddle from Paddle To Go works.</p>
+      </section>
+
+      <Accordion
+        items={[
+          {
+            title: "How do I reserve a paddle?",
+            rows: [
+              { label: "Step 1", value: "Add a paddle and colour to your cart" },
+              { label: "Step 2", value: `Pay a 50% deposit via ${PAYMENT_METHODS.map((m) => m.label).join(", ")}` },
+              { label: "Step 3", value: "Send your payment proof on Messenger" },
+            ],
+          },
+          {
+            title: "What if my colour shows Pre-order?",
+            rows: [
+              { label: "What it means", value: "That colour is out of this batch, not sold out for good" },
+              { label: "What happens", value: "Reserve it now with the same 50% deposit; PTG confirms your pickup or shipping date once it's back in stock" },
+            ],
+          },
+          {
+            title: "Can I cancel or get a refund?",
+            rows: [
+              { label: "Policy", value: "No — every order is final, non-refundable and non-cancellable" },
+              { label: "When you agree to this", value: "At checkout, before placing the order" },
+            ],
+          },
+          {
+            title: "Pickup or shipping?",
+            rows: [
+              { label: "Pickup", value: "Arranged after PTG reviews your order" },
+              { label: "Shipping", value: "Available; the fee is confirmed after review, not charged upfront" },
+            ],
+          },
+          {
+            title: "How do I contact Paddle To Go?",
+            rows: [
+              {
+                label: "Messenger",
+                value: (
+                  <a href={PTG_MESSENGER_URL} target="_blank" rel="noreferrer">
+                    Message us <ArrowRight size={12} />
+                  </a>
+                ),
+              },
+            ],
+          },
+        ]}
+      />
+    </main>
+  );
+}
+
 /** Order confirmation is its own route so it can be reloaded, bookmarked, or reopened from an email — not a modal that vanishes on refresh. */
 function OrderConfirmation() {
   const { orderNumber } = useParams();
@@ -1738,10 +2333,9 @@ function OrderConfirmation() {
     <main className="public-main">
       <section className="public-state public-state-tall public-success-page">
         <div className="public-success-icon"><Check size={27} /></div>
-        <span className="public-kicker">ORDER {orderNumber}</span>
         <h2>Your paddle is requested.</h2>
         <p>
-          We received your order{deposit != null ? ` and ${money(deposit)} proof` : ""}. Paddle To Go will review it and confirm fulfilment.
+          Order <strong>{orderNumber}</strong> — we received your order{deposit != null ? ` and ${money(deposit)} proof` : ""}. Paddle To Go will review it and confirm fulfilment.
         </p>
         <Link to="../.." className="public-state-link">Continue shopping</Link>
       </section>

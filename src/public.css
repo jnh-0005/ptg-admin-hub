@@ -1,508 +1,538 @@
 /* ── Foundation ─────────────────────────────────────────────────────── */
-.public-shell{--forest:#123d36;--teal:#0b7775;--paper:#f5f7f6;--surface:#fff;--line:#d9e3e0;--ink:#17312d;--muted:#62736f;min-height:100svh;background:var(--paper);color:var(--ink);font-family:"Poppins",system-ui,sans-serif}
+.public-shell{
+  --forest:#123d36;--teal:#0b7775;--paper:#f5f7f6;--surface:#fff;
+  --line:#d9e3e0;--ink:#17312d;--muted:#62736f;
+  --r-sm:7px;--r-md:14px;
+  min-height:100svh;background:var(--paper);color:var(--ink);font-family:"Poppins",system-ui,sans-serif;
+}
 .public-shell *{box-sizing:border-box}
 .public-shell button,.public-shell input,.public-shell textarea,.public-shell select{font:inherit}
 .public-shell button{cursor:pointer}
 .public-shell button:disabled{cursor:not-allowed;opacity:.5}
 .public-shell a{color:inherit;text-decoration:none}
-.public-shell button:active,.public-shell a:active{transform:scale(.975)}
-.public-shell button:focus-visible,.public-shell a:focus-visible{outline:3px solid #67b7ae;outline-offset:3px}
+.public-shell button:active,.public-shell a:active{transform:scale(.98)}
+.public-shell button:focus-visible,.public-shell a:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
+html.public-lock,html.public-lock body{overflow:hidden}
 @media(prefers-reduced-motion:reduce){.public-shell *{scroll-behavior:auto!important;animation-duration:.001ms!important;transition-duration:.001ms!important}}
 
-/* ── Nav (sticky, site-wide) ────────────────────────────────────────── */
-.public-nav{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:18px;min-height:64px;padding:10px max(16px,calc((100vw - 1160px)/2));background:linear-gradient(120deg,var(--forest),var(--teal));box-shadow:0 8px 24px #123d3617}
-.public-nav-brand{display:block;flex:0 0 auto}
-.public-logo{display:block;width:auto;height:40px;object-fit:contain}
-.public-nav-links{display:flex;flex:1;gap:18px}
-.public-nav-links a{padding:6px 2px;color:#eaf3f1;font-size:12px;font-weight:700;border-bottom:2px solid transparent}
-.public-nav-links a:hover{border-color:#ffffff70}
-/* a.public-cart-link, not the bare class — link-color specificity bug (see
-   button.public-compare-toggle note below): loses the color fight to
-   .public-shell a{color:inherit} and silently renders var(--ink) instead of
-   var(--forest). Confirmed affected; this was the worst instance since it
-   sits on a white circle against a dark nav. */
-a.public-cart-link{position:relative;display:grid;width:42px;height:42px;flex:0 0 42px;place-items:center;border-radius:50%;background:#fff;color:var(--forest)}
-.public-cart-link b{position:absolute;top:-4px;right:-4px;display:grid;min-width:19px;height:19px;place-items:center;border-radius:999px;background:var(--teal);color:#fff;font-size:10px;box-shadow:0 0 0 2px var(--forest)}
-.public-to-top{position:fixed;right:16px;bottom:16px;z-index:25;display:grid;width:44px;height:44px;place-items:center;border:0;border-radius:50%;background:var(--forest);color:#fff;box-shadow:0 10px 24px #05140f4d}
-.public-to-top:hover{background:var(--teal)}
+/* ── Nav ────────────────────────────────────────────────────────────── */
+/* Solid, always — no transparent-over-hero state to transition out of, so
+   there's nothing to desync between breakpoints or flicker on scroll. Only
+   `.is-scrolled` changes anything, and only height + a hairline shadow. */
+.public-nav{
+  position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:20px;
+  min-height:68px;padding:0 max(18px,calc((100vw - 1280px)/2));
+  background:linear-gradient(120deg,var(--forest),var(--teal));color:#fff;
+  transition:min-height .25s ease,box-shadow .25s ease;
+}
+.public-nav.is-scrolled{min-height:56px;box-shadow:0 8px 24px #0a221d26}
+.public-nav-brand{display:flex;align-items:center;flex:0 0 auto}
+.public-nav-logo{display:block;width:auto;height:32px;object-fit:contain}
+.public-nav-links{position:relative;display:flex;align-items:center;flex:0 0 auto;gap:22px;margin-left:8px}
+.public-nav-links>div{position:relative}
+a.public-nav-shop-link{display:flex;align-items:center;gap:5px;padding:8px 2px;color:#fff;font-size:13px;font-weight:600;letter-spacing:.01em}
+a.public-nav-shop-link:hover{color:#cdece7}
+.public-nav-spacer{flex:1}
+.public-nav-actions{display:flex;flex:0 0 auto;align-items:center;gap:6px}
+.public-nav-icon-btn{display:grid;width:38px;height:38px;place-items:center;border:0;border-radius:50%;background:none;color:#fff}
+.public-nav-icon-btn:hover{background:#ffffff26}
+a.public-nav-cart{position:relative;display:grid;width:38px;height:38px;place-items:center;border-radius:50%;color:#fff}
+a.public-nav-cart:hover{background:#ffffff26}
+.public-nav-cart b{position:absolute;top:2px;right:2px;display:grid;min-width:16px;height:16px;place-items:center;border-radius:999px;background:#fff;color:var(--forest);font-size:9px;font-weight:700}
 
-/* ── Hero: real banner, tagline overlaid, given real room to breathe ──── */
-.public-hero{position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center;min-height:64svh;background:#0e332c;color:#fff}
-.public-hero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}
-.public-hero-scrim{position:absolute;inset:0;background:radial-gradient(60% 55% at 32% 48%,#0a221dd6 0%,#0a221d66 55%,#0a221d1a 100%)}
-.public-kicker-on-dark{color:#8fd6cd}
-.public-hero-text{position:relative;padding:0 20px}
-.public-hero-text h1{margin:9px 0 10px;font-size:clamp(30px,8vw,56px);font-weight:800;letter-spacing:-.035em;line-height:1.02;color:#fff;text-shadow:0 4px 24px #05140f7a}
-.public-hero-text p{max-width:440px;margin:0 0 20px;color:#e2ede9;font-size:13px;line-height:1.6}
-/* a.public-hero-cta, not the bare class — same link-color specificity bug
-   (see button.public-compare-toggle note below). Currently masked because
-   the reset's fallback (inherit) happens to land on the same white the
-   .public-hero ancestor already sets, but that's incidental, not a fix. */
-a.public-hero-cta{display:inline-flex;align-items:center;gap:8px;padding:0 22px;min-height:46px;border-radius:999px;background:var(--teal);color:#fff;font-size:12px;font-weight:750;box-shadow:0 10px 30px #0b777560}
-.public-hero-cta:hover{background:#0a8a87}
-.public-hero-float{position:absolute;z-index:2;top:14px;right:14px;display:flex;width:fit-content;max-width:min(58vw,220px);align-items:center;gap:10px;padding:10px 14px;border-radius:14px;background:#fff;color:var(--ink);box-shadow:0 14px 30px #05140f55}
-.public-hero-float strong{font:800 18px "JetBrains Mono Variable",monospace;color:var(--forest)}
-.public-hero-float span{max-width:120px;color:var(--muted);font-size:8.5px;font-weight:700;line-height:1.3}
+/* Shop dropdown: hover or focus reveals a panel of real brand names. */
+.public-nav-dropdown{
+  position:absolute;top:calc(100% + 14px);left:0;transform:translateY(-6px);
+  display:grid;grid-template-columns:repeat(2,minmax(120px,1fr));gap:4px 22px;
+  min-width:280px;padding:18px 20px;border:1px solid var(--line);border-radius:var(--r-md);
+  background:var(--surface);box-shadow:0 20px 40px #00000014;
+  opacity:0;visibility:hidden;transition:opacity .18s ease,transform .18s ease,visibility .18s;
+}
+.public-nav-links>div:hover .public-nav-dropdown,.public-nav-links>div:focus-within .public-nav-dropdown{
+  opacity:1;visibility:visible;transform:translateY(0);
+}
+.public-nav-dropdown a{padding:6px 0;color:var(--ink);font-size:12.5px;font-weight:500}
+.public-nav-dropdown a:hover{color:var(--teal);text-decoration:underline;text-underline-offset:3px}
+.public-nav-dropdown-all{grid-column:1/-1;padding-bottom:8px!important;margin-bottom:6px;border-bottom:1px solid var(--line);color:var(--teal)!important;font-weight:700!important;text-transform:uppercase;font-size:10.5px!important;letter-spacing:.06em}
 
-/* ── Dark feature band: how ordering works ─────────────────────────────
-   One consistent numbered-badge card, fluid grid (auto-fit) instead of
-   breakpoint-stepped columns — it reflows from one column to three on its
-   own, so there's no in-between width where the layout is half-migrated. */
-.public-feature{padding:40px 0;background:#0e332c;color:#fff;overflow:hidden}
+/* Expanding nav search: an icon that opens an inline field, submits to ?q=. */
+.public-nav-search{display:flex;align-items:center}
+.public-nav-search-field{display:flex;align-items:center;gap:8px;overflow:hidden;width:0;transition:width .25s ease,padding .25s ease;padding:0}
+.public-nav-search-field.is-open{width:180px;padding:0 4px}
+.public-nav-search-field input{width:100%;border:0;border-bottom:1px solid currentColor;background:transparent;padding:4px 2px;font-size:13px;color:inherit}
+.public-nav-search-field input::placeholder{color:currentColor;opacity:.55}
+
+/* Mobile drawer nav */
+.public-nav-mobile-toggle{display:none}
+.public-mobile-drawer-overlay{position:fixed;inset:0;z-index:49;background:#0b0f1fb3}
+.public-mobile-drawer{position:fixed;top:0;right:0;bottom:0;z-index:50;display:flex;flex-direction:column;width:min(84vw,340px);background:var(--surface);box-shadow:-20px 0 50px #00000022}
+.public-mobile-drawer-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}
+.public-mobile-drawer-head .public-logo{height:28px}
+.public-mobile-drawer-body{display:flex;flex-direction:column;gap:2px;padding:10px 18px 24px;overflow-y:auto}
+.public-mobile-drawer-body a,.public-mobile-drawer-body button{display:block;width:100%;padding:13px 0;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font-size:15px;font-weight:600;text-align:left}
+.public-mobile-drawer-section{margin-top:8px;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.public-mobile-drawer-body .public-mobile-brand{padding:10px 0;font-size:13px;font-weight:500;border-bottom:1px solid var(--line)}
+
+/* Dark logo mark, for use on light (white/paper) backgrounds — the footer
+   and the mobile drawer, both outside the always-dark nav. */
+.public-logo{display:block;width:auto;height:32px;object-fit:contain;filter:brightness(0)}
+
+/* ── Hero: editorial, image untouched, one message, one CTA ──────────── */
+/* The real banner asset has its logo lockup and social handles baked into
+   the right two-thirds of the frame — text stays in the left column and
+   the scrim darkens left-to-right (not top-to-bottom) so it never competes
+   with that baked-in content, at any crop this container ends up applying
+   to the wide source image. */
+.public-hero{position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:center;min-height:62svh;background:var(--forest);color:#fff}
+.public-hero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:left center}
+.public-hero-scrim{position:absolute;inset:0;background:linear-gradient(100deg,#0a221dd9 0%,#0a221d94 38%,#0a221d1a 62%,transparent 78%)}
+.public-hero-text{position:relative;padding:0 max(18px,calc((100vw - 1280px)/2));max-width:520px}
+.public-hero-text h1{margin:12px 0 14px;font-size:clamp(34px,7vw,64px);font-weight:700;letter-spacing:-.03em;line-height:1.02;color:#fff}
+.public-hero-text p{max-width:440px;margin:0 0 26px;color:#f1f0ec;font-size:15px;line-height:1.6}
+a.public-hero-cta{display:inline-flex;align-items:center;gap:10px;padding:0 26px;min-height:50px;border-radius:var(--r-sm);background:#fff;color:var(--forest);font-size:12.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.public-hero-cta:hover{background:#e9e8e3}
+
+/* ── Brand moment: LogoLoop, generous room on both sides ───────────────
+   Dark, on purpose — the brand strip's own real logo artwork is white/light
+   (built for a dark backdrop), and a short dark band here doubles as a
+   breath between the hero and the shop, without competing with either. */
+.public-feature{padding:64px 0;background:var(--forest);overflow:hidden}
 .public-feature-copy{max-width:900px;margin:0 auto 28px;padding:0 20px}
-.public-feature h2{margin:6px 0 0;font-size:clamp(20px,4vw,30px);font-weight:700;letter-spacing:-.03em;line-height:1.15;color:#fff}
-
-/* Auto-scrolling brand row: duplicated track, seamless loop, pauses on hover/focus. */
-.public-marquee{position:relative;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%)}
-.public-marquee-track{display:flex;width:max-content;align-items:center;gap:48px;animation:public-marquee-scroll 22s linear infinite}
-.public-marquee:hover .public-marquee-track,.public-marquee:focus-within .public-marquee-track{animation-play-state:paused}
-.public-marquee-track.is-static{animation:none;flex-wrap:wrap;width:100%;justify-content:center}
-.public-marquee-item{display:flex;flex:0 0 auto;align-items:center;height:36px;color:#e2ede9cc;font-size:15px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
-.public-marquee-item img{height:100%;width:auto;max-width:150px;object-fit:contain;opacity:.94}
-@keyframes public-marquee-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.logoloop{position:relative}
+.logoloop.is-fade-mask{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%)}
+.logoloop.is-fade-solid{overflow:hidden}
+.logoloop-fade{position:absolute;top:0;bottom:0;width:80px;z-index:1;pointer-events:none}
+.logoloop-fade-left{left:0;background:linear-gradient(90deg,var(--logoloop-fade-color),transparent)}
+.logoloop-fade-right{right:0;background:linear-gradient(270deg,var(--logoloop-fade-color),transparent)}
+.logoloop-track{display:flex;width:max-content;align-items:center;gap:var(--logoloop-gap);animation:logoloop-scroll var(--logoloop-duration) linear infinite;animation-direction:var(--logoloop-direction)}
+.logoloop.is-pausable:hover .logoloop-track,.logoloop.is-pausable:focus-within .logoloop-track{animation-play-state:paused}
+.logoloop-item{display:flex;flex:0 0 auto;align-items:center;height:var(--logoloop-height);color:#ffffffb3;font-size:15px;font-weight:700;letter-spacing:.02em;white-space:nowrap;opacity:.85}
+.logoloop-item img{height:100%;width:auto;max-width:140px;object-fit:contain;opacity:.85}
+.logoloop-item.is-scalable{transition:transform .2s ease}
+.logoloop-item.is-scalable:hover{transform:scale(1.08)}
+@keyframes logoloop-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){.logoloop-track{animation:none;flex-wrap:wrap;width:100%;justify-content:center}}
 
 /* ── Page shell ─────────────────────────────────────────────────────── */
-.public-main{width:min(100%,1160px);margin:0 auto;padding:18px 14px 64px}
-.public-page-head{padding:6px 2px 4px}
+.public-main{width:min(100%,1280px);margin:0 auto;padding:20px 18px 80px}
+.public-page-head{padding:8px 2px 6px}
 .public-page-head-compact{padding-top:0}
-.public-kicker{display:inline-block;color:var(--teal);font-size:9px;font-weight:800;letter-spacing:.14em}
-.public-page-head h1{margin:6px 0 6px;font-size:clamp(28px,7vw,44px);font-weight:700;letter-spacing:-.045em;line-height:1}
-.public-page-head h2{margin:6px 0 6px;font-size:clamp(20px,5vw,26px);font-weight:700;letter-spacing:-.03em;line-height:1.1}
-.public-page-head p{max-width:520px;margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.55}
-/* a.public-back-link, not the bare class — same link-color specificity bug
-   (see button.public-compare-toggle note below): silently renders var(--ink)
-   instead of var(--muted). */
-a.public-back-link{display:flex;width:fit-content;align-items:center;gap:6px;margin-bottom:8px;color:var(--muted);font-size:11px;font-weight:700}
-.public-back-link:hover{color:var(--forest)}
-.public-live{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:9px}
-.public-live i{width:7px;height:7px;border:2px solid var(--teal);border-radius:50%;background:var(--teal)}
-.public-live.is-offline i{background:transparent}
+.public-kicker{display:inline-block;color:var(--teal);font-size:10px;font-weight:700;letter-spacing:.12em}
+.public-page-head h1{margin:8px 0 8px;font-size:clamp(28px,6vw,42px);font-weight:700;letter-spacing:-.03em;line-height:1.05}
+.public-page-head h2{margin:8px 0 8px;font-size:clamp(21px,4.5vw,27px);font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.public-page-head p{max-width:520px;margin:0 0 12px;color:var(--muted);font-size:13px;line-height:1.6}
+a.public-back-link{display:flex;width:fit-content;align-items:center;gap:6px;margin-bottom:10px;color:var(--muted);font-size:12px;font-weight:600}
+.public-back-link:hover{color:var(--teal)}
+.public-live{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:10px}
+.public-live i{width:6px;height:6px;border-radius:50%;background:#3d9a5a}
+.public-live.is-offline i{background:var(--line)}
 
-/* ── Shop: category / brand / search / sort ────────────────────────── */
-.public-category-row{display:flex;gap:7px;margin:10px 0 4px;overflow-x:auto;scrollbar-width:none}
+/* ── Shop: eyebrow + heading, category / brand / search / sort ────────
+   Chips are text/outline, not filled pills — the one filled-button
+   treatment on this page belongs to Add to cart / quick-add only. */
+.public-category-row{display:flex;gap:20px;margin:14px 0 4px;overflow-x:auto;scrollbar-width:none}
 .public-category-row::-webkit-scrollbar{display:none}
-.public-category-row button{min-height:34px;flex:0 0 auto;padding:0 13px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:10px;font-weight:700}
-.public-category-row button.is-active{border-color:var(--forest);background:var(--forest);color:#fff}
-.public-filter-bar{display:grid;gap:10px;margin:6px 0 22px;padding:0 0 16px;border-bottom:1px solid var(--line)}
-.public-search{display:flex;min-height:42px;align-items:center;gap:9px;padding:0 12px;border:1px solid var(--line);border-radius:11px;background:#f9fbfa;color:var(--muted)}
-.public-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #0b77751c}
-.public-search input{width:100%;border:0;outline:0;background:transparent;color:var(--ink);font-size:12px}
-.public-brand-row{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none}
+.public-category-row button{flex:0 0 auto;padding:6px 0;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font-size:12.5px;font-weight:600}
+.public-category-row button.is-active{border-color:var(--teal);color:var(--ink)}
+.public-filter-bar{display:grid;gap:14px;margin:10px 0 28px;padding:0 0 20px;border-bottom:1px solid var(--line)}
+.public-search{display:flex;min-height:42px;align-items:center;gap:9px;padding:0 2px;border-bottom:1px solid var(--line);background:transparent;color:var(--muted)}
+.public-search:focus-within{border-color:var(--teal)}
+.public-search input{width:100%;border:0;outline:0;background:transparent;color:var(--ink);font-size:13px}
+.public-brand-row{display:flex;gap:18px;overflow-x:auto;scrollbar-width:none}
 .public-brand-row::-webkit-scrollbar{display:none}
-.public-brand-row button{min-height:34px;flex:0 0 auto;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:10px;font-weight:700}
-.public-brand-row button.is-active{border-color:var(--forest);background:var(--forest);color:#fff}
-.public-sort{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10px;font-weight:700;color:var(--muted)}
-.public-sort select{min-height:38px;padding:0 8px;border:1px solid var(--line);border-radius:9px;background:#f9fbfa;color:var(--ink);font-size:11px}
+.public-brand-row button{flex:0 0 auto;padding:6px 0;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font-size:12px;font-weight:600}
+.public-brand-row button.is-active{border-color:var(--teal);color:var(--ink)}
+.public-sort{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:600;color:var(--muted)}
+.public-sort select{min-height:38px;padding:0 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);font-size:12px}
 
-/* ── Product grid + card ────────────────────────────────────────────── */
-.public-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.public-card{position:relative;overflow:hidden;border-radius:14px;background:transparent;transition:transform .18s ease}
-.public-card:hover{transform:translateY(-3px)}
+/* ── Scroll row: the first few paddles, ahead of the featured band ────
+   Native touch/trackpad scroll + snap; arrow buttons are a mouse-only
+   affordance layered on top, not the only way to move it. */
+.public-scroll-row-wrap{position:relative;margin:0 -18px;padding:0 18px}
+.public-scroll-row{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+.public-scroll-row::-webkit-scrollbar{display:none}
+.public-scroll-item{flex:0 0 auto;width:200px;scroll-snap-align:start}
+.public-scroll-arrow{position:absolute;top:38%;z-index:2;display:none;width:38px;height:38px;place-items:center;border:1px solid var(--line);border-radius:50%;background:var(--surface);color:var(--ink);box-shadow:0 8px 20px #0000001a}
+.public-scroll-arrow.is-prev{left:2px}
+.public-scroll-arrow.is-next{right:2px}
+@media(hover:hover) and (pointer:fine){.public-scroll-arrow{display:grid}}
+
+/* ── Product grid + card ────────────────────────────────────────────
+   Open layout: the image is the object, the card is not a box. Hover
+   is a gentle image scale, nothing that lifts or shadows the whole tile. */
+.public-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 16px}
+/* An odd-numbered grid (e.g. the 3-card slice before the featured band)
+   leaves a lone last card stranded in the left column at this 2-up
+   breakpoint — center it instead of letting it hug the left edge. Scoped
+   off again at 640px+, where 3/4-up layouts don't have this orphan. */
+/* Scoped strictly to the 2-up mobile grid via max-width, not a base rule
+   plus a later override — a lone last card only reads as "stranded" at
+   2 columns; at 3 or 4 columns it just sits at the start of its own row
+   like a normal grid does, no special-casing needed there.
+   :not(:first-child) matters here too — without it, a filter that returns
+   exactly one result (odd, and both first and last) got centered too,
+   which reads wrong for a single card: it should sit left like any other
+   lone result, not float in the middle of an empty row. */
+@media(max-width:639px){
+  .public-grid>:last-child:nth-child(odd):not(:first-child){grid-column:1/-1;max-width:calc(50% - 8px);margin:0 auto}
+}
+.public-card{position:relative}
 .public-card>a{display:block;width:100%;color:inherit}
-.public-card-image{aspect-ratio:1;overflow:hidden;border-radius:14px;background:#edf2f0}
-.public-card-image>img,.public-product-image>img,.public-cart-thumb img{width:100%;height:100%;object-fit:cover}
-.public-card-badge{position:absolute;top:9px;left:9px;padding:4px 8px;border-radius:999px;background:#17312dcc;color:#fff;font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
-.public-card-badge.is-preorder{background:#0b7775e0}
-.public-placeholder{display:grid;width:100%;height:100%;place-content:center;justify-items:center;gap:8px;background:linear-gradient(150deg,#e7efec,#d3e4de);color:var(--muted)}
-.public-placeholder img{width:46%;height:auto;max-height:38%;object-fit:contain;opacity:.4}
-.public-placeholder span{font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#8199937d}
-.public-card-body{padding:11px 2px 2px}
+/* Portrait, not square — a tight 1:1 crop makes a paddle read cramped;
+   a taller frame gives it real room, closer to how a photo-led catalog
+   card usually treats a narrow product like a paddle. */
+.public-card-image{position:relative;aspect-ratio:3/4;overflow:hidden;border-radius:var(--r-md);background:#eeece5;padding:8px}
+.public-card-image>img,.public-product-image>img,.public-cart-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .5s cubic-bezier(.25,1,.5,1)}
+.public-card-image>img{border-radius:calc(var(--r-md) - 6px)}
+.public-card:hover .public-card-image>img{transform:scale(1.045)}
+.public-card-badge{position:absolute;top:10px;left:10px;padding:4px 9px;border-radius:999px;background:#fffffff2;color:var(--teal);font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.public-placeholder{display:grid;width:100%;height:100%;place-content:center;justify-items:center;gap:8px;background:linear-gradient(150deg,#efeee8,#e2e0d8);color:var(--muted)}
+.public-placeholder img{width:40%;height:auto;max-height:34%;object-fit:contain;opacity:.35}
+.public-placeholder span{font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#81817b8f}
+.public-card-body{padding:13px 1px 2px}
 .public-card-name{display:block;min-width:0}
-.public-card-name span{display:block;color:var(--teal);font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
-.public-card-name h2{min-width:0;overflow:hidden;margin:3px 0 0;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:-.02em}
-.public-card-shipsin{margin:3px 0 0;color:var(--muted);font-size:9px;font-weight:600}
-.public-card-meta{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:9px}
-.public-card-meta strong{font:700 13px/1.2 "JetBrains Mono Variable",monospace}
-/* button.public-quick-add,a.public-quick-add — this class renders as both a
-   <button> (in-grid quick-add) and a <Link> (out-of-stock → PDP), so both
-   type selectors are needed. The `a` variant had the link-color specificity
-   bug: white icon text silently going var(--ink)-on-forest, i.e. nearly
-   invisible, same failure mode as .public-cart-link above. */
-button.public-quick-add,a.public-quick-add{display:grid;width:34px;height:34px;flex:0 0 34px;place-items:center;border:0;border-radius:50%;background:var(--forest);color:#fff;box-shadow:0 6px 16px #123d3640}
-.public-quick-add:hover{background:var(--teal)}
-.public-quick-add.is-added{background:var(--teal)}
-.public-quick-add:disabled{background:var(--line);color:var(--muted);box-shadow:none}
-.public-view{display:flex;align-items:center;gap:4px;margin-top:9px;color:var(--teal);font-size:9px;font-weight:700}
-/*
-  button.public-compare-toggle (class+type, specificity 0,1,1), not
-  .public-compare-toggle alone (0,1,0) — the global reset above
-  (.public-shell button{font:inherit}, also 0,1,1) otherwise wins the tie by
-  source order and silently resets this button back to the page's base font
-  size, which is exactly what shipped the first time: padding applied
-  correctly, font-size quietly didn't.
-*/
-button.public-compare-toggle{display:flex;width:fit-content;align-items:center;gap:3px;margin:8px auto 0;padding:3px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:8px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
-button.public-compare-toggle.is-active{border-color:var(--teal);background:#eff8f6;color:var(--teal)}
-button.public-compare-toggle:disabled{opacity:.4}
+.public-card-name span{display:block;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+.public-card-name h2{min-width:0;overflow:hidden;margin:3px 0 0;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;letter-spacing:-.01em}
+.public-card-shipsin{margin:4px 0 0;color:var(--muted);font-size:10px;font-weight:500}
+.public-card-meta{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:10px}
+.public-card-meta strong{font:700 14px "Poppins",sans-serif;color:var(--ink)}
+/* Hidden until hover/focus-within on desktop (revealed, not always-on
+   chrome); always visible on touch since there is no hover to reveal it. */
+button.public-quick-add,a.public-quick-add{display:grid;width:34px;height:34px;flex:0 0 34px;place-items:center;border:0;border-radius:50%;background:var(--teal);color:#fff}
+.public-quick-add:hover{background:var(--forest)}
+.public-quick-add.is-added{background:#2f7d4f}
+.public-quick-add:disabled{background:var(--line);color:var(--muted)}
+/* Always a hover/focus reveal, no device-capability exception — a tap on
+   the card still opens the product page either way, so quick-add hiding
+   until an explicit hover/focus (or a tap that lands a synthetic hover)
+   never blocks the one interaction touch actually needs. */
+.public-card .public-card-meta .public-quick-add,
+.public-card .public-card-meta a.public-quick-add{opacity:0;transform:translateY(4px);transition:opacity .2s ease,transform .2s ease}
+.public-card:hover .public-card-meta .public-quick-add,
+.public-card:focus-within .public-card-meta .public-quick-add,
+.public-card .public-card-meta .public-quick-add.is-added{opacity:1;transform:translateY(0)}
+.public-view{display:flex;align-items:center;gap:4px;margin-top:9px;color:var(--teal);font-size:10px;font-weight:600}
+.public-card-media{position:relative}
+/* Compare sits on the photo itself (bottom-right), not a separate line under
+   the price — frees up the card body and keeps every card's height driven
+   by name/price alone. */
+button.public-card-compare{position:absolute;bottom:10px;right:10px;z-index:1;display:flex;align-items:center;gap:4px;padding:5px 10px;border:0;border-radius:999px;background:#fffffff2;color:var(--ink);font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+button.public-card-compare.is-active{background:var(--teal);color:#fff}
+button.public-card-compare:disabled{opacity:.5}
+
+/* ── Featured product band: one product, a different composition ─────
+   Breaks the neutral rhythm on purpose — the one place navy fills a
+   large area, and the one grid item that isn't square-image-then-copy. */
+.public-featured-band{display:grid;gap:28px;margin:56px 0;padding:36px 22px;border-radius:var(--r-md);background:var(--forest);color:#fff}
+.public-featured-media{position:relative;aspect-ratio:1;overflow:hidden;border-radius:var(--r-sm);background:#ffffff12}
+.public-featured-media>div{width:100%;height:100%}
+.public-featured-media img{width:100%;height:100%;object-fit:cover}
+.public-featured-media .public-placeholder img{width:40%;height:auto;opacity:.5;filter:brightness(0) invert(1)}
+.public-featured-copy{display:flex;flex-direction:column;justify-content:center;gap:4px}
+.public-featured-copy .public-kicker{color:#8fa3d6}
+.public-featured-copy span.public-featured-brand{display:block;margin-top:6px;color:#c9d2ea;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.public-featured-copy h2{margin:6px 0 10px;font-size:clamp(26px,4.5vw,38px);font-weight:700;letter-spacing:-.03em;line-height:1.08;color:#fff}
+.public-featured-copy strong{display:block;margin-bottom:18px;font:700 22px "Poppins",sans-serif;color:#fff}
+a.public-featured-cta{display:inline-flex;width:fit-content;align-items:center;gap:9px;padding:0 24px;min-height:48px;border-radius:var(--r-sm);background:#fff;color:var(--forest);font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+a.public-featured-cta:hover{background:#e9e8e3}
+
+/* ── Brand/editorial band: real asset + one factual line ──────────── */
+.public-editorial-band{display:grid;gap:0;margin:56px 0 8px;overflow:hidden;border-radius:var(--r-md)}
+.public-editorial-media{position:relative;aspect-ratio:16/10;overflow:hidden;background:#eeece5}
+.public-editorial-media img{width:100%;height:100%;object-fit:cover}
+.public-editorial-copy{display:flex;flex-direction:column;justify-content:center;gap:12px;padding:32px 6px}
+.public-editorial-copy h2{margin:0;font-size:clamp(22px,4vw,30px);font-weight:700;letter-spacing:-.025em;line-height:1.15}
+.public-editorial-copy p{margin:0;max-width:440px;color:var(--muted);font-size:14px;line-height:1.65}
 
 /* ── Compare bar + compare page ────────────────────────────────────── */
-/*
-  The centering lives on this outer anchor, never on .public-compare-bar
-  itself — framer-motion writes its own inline `transform` on the element it
-  animates (the slide-up y offset) and an inline style always wins over a
-  stylesheet rule, so a translateX(-50%) placed on the animated element
-  itself gets silently overwritten the moment the animation runs. This
-  wrapper is never animated, so its CSS transform survives.
-*/
-.public-compare-bar-anchor{position:fixed;left:50%;bottom:16px;z-index:20;transform:translateX(-50%)}
-.public-compare-bar{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 16px;border-radius:999px;background:var(--forest);color:#fff;box-shadow:0 12px 32px #05140f4d}
-.public-compare-bar span{font-size:11px;font-weight:700;white-space:nowrap}
-/* a.public-compare-bar-link, not the bare class — same specificity fight as
-   button.public-compare-toggle above, this time against .public-shell
-   a{color:inherit}: without the type selector this loses and the link
-   quietly inherits white from its dark .public-compare-bar parent, i.e. a
-   blank-looking white pill with genuinely invisible text. */
-a.public-compare-bar-link{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:#fff;color:var(--forest);font-size:11px;font-weight:800;white-space:nowrap}
+.public-compare-bar-anchor{position:fixed;left:50%;bottom:20px;z-index:20;transform:translateX(-50%)}
+.public-compare-bar{display:flex;align-items:center;gap:14px;padding:11px 11px 11px 18px;border-radius:999px;background:var(--forest);color:#fff;box-shadow:0 16px 34px #0b0f1f4d}
+.public-compare-bar span{font-size:12px;font-weight:600;white-space:nowrap}
+a.public-compare-bar-link{display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:999px;background:#fff;color:var(--forest);font-size:11px;font-weight:700;white-space:nowrap}
 .public-compare-heading-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-/* button.public-compare-clear, not the bare class — same specificity note as
-   the other button/link fixes above (.public-shell button{font:inherit}
-   would otherwise win the font-size tie). */
-button.public-compare-clear{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;font-weight:700}
+button.public-compare-clear{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px;font-weight:600}
 button.public-compare-clear:hover{color:#b23}
-/* Always 2 columns, even on a narrow phone (matching .public-grid's own
-   pattern) — an auto-fit minmax(220px,1fr) here would force cards to stack
-   one-per-row below ~460px wide, which is exactly the "endless scroll"
-   complaint. min-width:0 on the card lets its content shrink instead of
-   forcing the row wider than the viewport. */
-.public-compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-/*
-  All 3 paddles beside each other on one row, not 2 then a lone 3rd card
-  wrapping below — scoped to below 640px specifically (max-width, not just
-  a bare rule) so it can never leak into and fight the desktop centering
-  rule in the min-width:640px block right after this. data-count is set
-  from selected.length in JSX.
-*/
+.public-compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 @media(max-width:639px){
-  /*
-    1 or 2 selected: cap the card width and center the row, same idea as the
-    desktop fix — the base repeat(2,minmax(0,1fr)) rule stretches a single
-    selected paddle to fill half the screen (stuck against the left edge,
-    the other column empty) and stretches 2 to fill it completely edge to
-    edge. Capping + centering reads as an intentional, balanced layout at
-    either count instead of "half-empty" or "wall to wall."
-  */
   .public-compare-grid[data-count="1"],.public-compare-grid[data-count="2"]{
     grid-template-columns:repeat(auto-fit,minmax(140px,160px));
     justify-content:center;
   }
-  .public-compare-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
-  .public-compare-grid[data-count="3"] .public-compare-card{padding:6px;gap:3px}
-  .public-compare-grid[data-count="3"] .public-compare-card h2{font-size:10px;line-height:1.25}
-  .public-compare-grid[data-count="3"] .public-compare-card strong{font-size:10px}
+  .public-compare-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .public-compare-grid[data-count="3"] .public-compare-card{gap:4px}
+  .public-compare-grid[data-count="3"] .public-compare-card h2{font-size:11px;line-height:1.25}
+  .public-compare-grid[data-count="3"] .public-compare-card strong{font-size:11px}
   .public-compare-grid[data-count="3"] .public-inline-badge{font-size:7px;padding:2px 6px}
   .public-compare-grid[data-count="3"] .public-compare-remove{top:4px;right:4px;width:20px;height:20px}
-  .public-compare-grid[data-count="3"] .public-secondary-link{margin-top:4px;padding:4px;font-size:9px}
+  .public-compare-grid[data-count="3"] .public-secondary-link{margin-top:4px;font-size:9px}
 }
 @media(min-width:640px){
-  /*
-    minmax(220px,1fr) let each card's column — and its aspect-ratio:1 image
-    with it — stretch to fill whatever's left of a ~1160px-wide desktop main
-    column. With only 2-3 paddles selected that's ~500px+ of empty photo
-    placeholder. A capped max width keeps cards at a normal, readable size;
-    justify-content:center (not :start) means 2 selected paddles sit
-    balanced in the middle of the row instead of stranded against the left
-    edge with a huge gap of empty space to their right.
-  */
   .public-compare-grid{grid-template-columns:repeat(auto-fit,minmax(220px,260px));justify-content:center}
 }
-.public-compare-card{position:relative;display:grid;min-width:0;gap:6px;padding:12px;border:1px solid var(--line);border-radius:16px;background:#fff}
-.public-compare-remove{position:absolute;top:10px;right:10px;z-index:1;display:grid;width:26px;height:26px;place-items:center;border:0;border-radius:50%;background:#f0f2f1;color:var(--muted)}
-.public-compare-remove:hover{background:#e3e0da;color:var(--ink)}
-.public-compare-image{aspect-ratio:1;overflow:hidden;border-radius:12px;background:#edf2f0}
-.public-compare-card h2{margin:2px 0 0;font-size:14px;font-weight:700;letter-spacing:-.02em}
-.public-compare-card strong{font:700 13px "JetBrains Mono Variable",monospace}
-.public-inline-badge{justify-self:start;padding:3px 8px;border-radius:999px;background:#e9f4f2;color:var(--teal);font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
-.public-inline-badge.is-preorder{background:#f2f6f5;color:var(--forest)}
-/*
-  table-layout:fixed + the JS-driven <colgroup> above is what actually keeps
-  every column beside the others at an even width on a narrow phone, instead
-  of the browser sizing each column to its longest line (spec text easily
-  runs 40+ characters) and pushing later columns off-screen — no overflow-x
-  scroll needed for the normal 2-3 paddle case.
-*/
-.public-compare-table-wrap{margin-top:20px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.public-compare-card{position:relative;display:grid;min-width:0;gap:7px}
+.public-compare-remove{position:absolute;top:10px;right:10px;z-index:1;display:grid;width:28px;height:28px;place-items:center;border:0;border-radius:50%;background:#fffffff2;color:var(--muted)}
+.public-compare-remove:hover{color:var(--ink)}
+.public-compare-image{aspect-ratio:3/4;overflow:hidden;border-radius:var(--r-md);background:#eeece5}
+.public-compare-card h2{margin:2px 0 0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.public-compare-card strong{font:700 14px "Poppins",sans-serif}
+.public-inline-badge{justify-self:start;padding:3px 8px;border-radius:999px;background:#eef1f8;color:var(--teal);font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.public-inline-badge.is-preorder{background:#f1f0ec;color:var(--ink)}
+.public-compare-table-wrap{margin-top:26px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface)}
 .public-compare-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px}
-.public-compare-table th,.public-compare-table td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:break-word}
+.public-compare-table th,.public-compare-table td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:break-word}
 .public-compare-table tr:last-child th,.public-compare-table tr:last-child td{border-bottom:0}
 .public-compare-table th[scope="row"]{color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;overflow-wrap:break-word}
-.public-compare-table td{font-weight:600;line-height:1.4}
+.public-compare-table td{font-weight:500;line-height:1.4}
 @media(min-width:640px){
   .public-compare-table{font-size:12px}
-  .public-compare-table th,.public-compare-table td{padding:12px 16px}
+  .public-compare-table th,.public-compare-table td{padding:13px 18px}
   .public-compare-table th[scope="row"]{font-size:10px}
 }
-.public-compare-section th{padding:9px 16px;background:var(--paper);color:var(--teal);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
-/*
-  Column, not row: at 3 paddles a product column is only ~90px wide on a
-  phone, and "Standard" + "Pre-order" side by side (the old
-  justify-content:space-between row) simply doesn't fit — that crowding is
-  what read as overlapping text. Stacking the status under the colour name
-  always fits.
-*/
+.public-compare-section th{padding:10px 18px;background:var(--paper);color:var(--teal);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .public-compare-colour-row{display:flex;flex-direction:column;gap:1px}
 .public-compare-colour-row+.public-compare-colour-row{margin-top:6px}
 .public-compare-colour-row small{color:var(--muted);font-size:9px}
 
 /* ── Empty / error / loading states ────────────────────────────────── */
-.public-state{display:grid;min-height:240px;place-content:center;justify-items:center;padding:32px;border:1px solid var(--line);border-radius:16px;background:#fff;text-align:center}
+.public-state{display:grid;min-height:260px;place-content:center;justify-items:center;padding:36px;text-align:center}
 .public-state-tall{min-height:min(60svh,440px)}
-.public-state h2{margin:12px 0 5px;font-size:18px}
-.public-state p{margin:0;color:var(--muted);font-size:11px}
-/* .public-state button is already type-qualified; a.public-state-link needs
-   the same treatment — the bare class lost the link-color specificity fight
-   (see button.public-compare-toggle note below). */
-.public-state button,a.public-state-link{display:inline-flex;min-height:40px;align-items:center;margin-top:16px;padding:0 16px;border:1px solid var(--forest);border-radius:999px;background:#fff;color:var(--forest);font-size:11px;font-weight:700}
+.public-state h2{margin:14px 0 6px;font-size:19px}
+.public-state p{margin:0;color:var(--muted);font-size:12px}
+.public-state button,a.public-state-link{display:inline-flex;min-height:42px;align-items:center;margin-top:18px;padding:0 18px;border:1px solid var(--teal);border-radius:var(--r-sm);background:transparent;color:var(--teal);font-size:12px;font-weight:600}
+/* Plain stacked text + chevron, not a bordered button — this is a "reveal
+   more of the same list" affordance, not a primary action competing with
+   Add to cart / Place order for button-level weight. */
+button.public-load-more{display:flex;flex-direction:column;align-items:center;gap:4px;width:fit-content;margin:36px auto 0;padding:4px;border:0;background:none;color:var(--ink);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+button.public-load-more:hover{color:var(--teal)}
 
 /* ── Footer ─────────────────────────────────────────────────────────── */
-.public-footer{display:grid;gap:20px;max-width:1160px;margin:0 auto;padding:28px 16px 44px;border-top:1px solid var(--line);color:var(--muted);font-size:10px}
-.public-footer-brand img{width:82px;height:36px;object-fit:contain}
-.public-footer-brand p{margin:8px 0 0;max-width:280px;line-height:1.5}
-.public-footer-col{display:flex;flex-direction:column;gap:6px}
-.public-footer-col h3{margin:0 0 2px;font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--teal)}
-.public-footer-col a{font-size:10px}
-.public-footer-col a:hover{color:var(--forest)}
+.public-footer{display:grid;gap:24px;max-width:1280px;margin:0 auto;padding:40px 18px 56px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}
+.public-footer-brand img{width:auto;height:34px;object-fit:contain;filter:brightness(0);opacity:.8}
+.public-footer-brand p{margin:10px 0 0;max-width:280px;line-height:1.6}
+.public-footer-col{display:flex;flex-direction:column;gap:8px}
+.public-footer-col h3{margin:0 0 4px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink)}
+.public-footer-col a{font-size:11px}
+.public-footer-col a:hover{color:var(--teal)}
 .public-footer-note{align-self:end}
 
 /* ── Product detail page: dark studio backdrop + overlaid info sheet ──── */
 .public-product-stage{display:grid}
-.public-product-backdrop{position:relative;display:grid;min-height:46svh;place-items:center;background:radial-gradient(120% 100% at 50% 0%,#1a4a41,#0a221d)}
-/* a.public-product-back, not the bare class — same link-color specificity
-   bug (see button.public-compare-toggle note below). */
-a.public-product-back{position:absolute;top:16px;left:16px;z-index:2;display:grid;width:40px;height:40px;place-items:center;border-radius:50%;background:#ffffffe6;color:var(--forest);box-shadow:0 6px 16px #05140f40}
+.public-product-backdrop{position:relative;display:grid;min-height:50svh;place-items:center;background:radial-gradient(120% 100% at 50% 0%,#1c2b52,var(--forest))}
+a.public-product-back{position:absolute;top:18px;left:18px;z-index:2;display:grid;width:40px;height:40px;place-items:center;border-radius:50%;background:#ffffffe6;color:var(--teal)}
 .public-product-backdrop .public-product-image{width:min(72%,320px);aspect-ratio:1;border-radius:0;background:transparent}
 .public-product-backdrop .public-placeholder{background:transparent}
 .public-product-backdrop .public-placeholder img{opacity:.9;filter:brightness(0) invert(1);width:52%;max-height:44%}
 .public-product-backdrop .public-placeholder span{color:#ffffff8a}
-.public-product-sheet{position:relative;z-index:1;margin-top:-22px;padding:22px max(16px,calc((100vw - 1160px)/2)) 40px;border-radius:22px 22px 0 0;background:var(--paper)}
-.public-breadcrumb{display:flex;align-items:center;gap:6px;margin:0 0 12px;color:var(--muted);font-size:11px;font-weight:600}
-/* Mobile already has the circular back-arrow over the hero image for "back
-   to shop" — the breadcrumb line is redundant there and just eats space
-   above the title. Desktop keeps it (see the 960px breakpoint below): the
-   back-arrow is hidden there and the breadcrumb is the only way back. */
+.public-product-sheet{position:relative;z-index:1;margin-top:-24px;padding:26px max(18px,calc((100vw - 1280px)/2)) 48px;border-radius:22px 22px 0 0;background:var(--paper)}
+.public-breadcrumb{display:flex;align-items:center;gap:6px;margin:0 0 14px;color:var(--muted);font-size:12px;font-weight:500}
 @media(max-width:639px){.public-breadcrumb{display:none}}
 .public-breadcrumb a{color:var(--teal)}
 .public-breadcrumb a:hover{text-decoration:underline}
-.public-breadcrumb span{color:var(--ink);font-weight:700}
+.public-breadcrumb span{color:var(--ink);font-weight:600}
 .public-product-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-.public-product-heading h1{margin:2px 0 0;font-size:clamp(22px,5vw,30px);font-weight:700;letter-spacing:-.035em;line-height:1.06}
-.public-product-price{flex:0 0 auto;font:700 20px "JetBrains Mono Variable",monospace;color:var(--forest)}
-.public-variants{display:grid;gap:7px;margin:16px 0}
-.public-variants>button{display:flex;min-height:60px;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;border:1px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);text-align:left}
-.public-variants>button.is-active{border-color:var(--teal);background:#eff8f6;box-shadow:0 0 0 2px #0b777515}
+.public-product-heading h1{margin:2px 0 0;font-size:clamp(23px,5vw,32px);font-weight:700;letter-spacing:-.03em;line-height:1.08}
+.public-product-price{flex:0 0 auto;font:700 21px "Poppins",sans-serif;color:var(--ink)}
+.public-variants{display:grid;gap:8px;margin:20px 0}
+.public-variants>button{display:flex;min-height:58px;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);text-align:left}
+.public-variants>button.is-active{border-color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal)}
 .public-variants span{display:grid;gap:3px}
-.public-variants b{font-size:12px}
-.public-variants small{color:var(--muted);font-size:9px}
-.public-variants strong{font:700 11px "JetBrains Mono Variable",monospace}
-.public-product-actions{display:flex;align-items:center;gap:10px}
-.public-stepper{display:flex;flex:0 0 auto;align-items:center;border:1px solid var(--line);border-radius:999px;background:#fff}
-.public-stepper button{display:grid;width:34px;height:34px;place-items:center;border:0;background:none;color:var(--forest)}
-.public-stepper span{min-width:18px;text-align:center;font:700 10px "JetBrains Mono Variable",monospace}
-/*
-  button.public-primary,a.public-primary — not the bare class. Same
-  specificity bug as every other button/link fix in this file, this time on
-  Cart's "Continue to checkout" (a <Link>, i.e. an <a>): .public-shell
-  a{color:inherit} (0,1,1) beat .public-primary{color:#fff} (0,1,0), so the
-  button's text silently inherited dark ink instead of white — unreadable
-  against its own dark-gradient background. The ProductPage/CheckoutPage
-  <button> uses of this class were never affected (buttons don't get a
-  color reset here, only font:inherit), which is why this went unnoticed
-  until it hit an <a>.
-*/
-button.public-primary,a.public-primary{display:flex;width:100%;min-height:48px;align-items:center;justify-content:center;gap:8px;padding:0 16px;border:0;border-radius:999px;background:linear-gradient(120deg,var(--forest),var(--teal));color:#fff;font-size:12px;font-weight:750}
-.public-primary.is-added{background:linear-gradient(120deg,var(--teal),var(--forest))}
-/* a.public-secondary-link, not the bare class — same link-color specificity
-   bug (see button.public-compare-toggle note below): silently renders
-   var(--ink) instead of var(--teal), so the link stopped reading as a link.
-   The two descendant-selector overrides below already carry enough
-   specificity of their own and don't need this. */
-a.public-secondary-link{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;padding:8px;color:var(--teal);font-size:11px;font-weight:700}
-/* button.public-product-compare-link, not the bare class — same specificity
-   note as every other button/link fix in this file: .public-shell
-   button{font:inherit} would otherwise win the font-size tie. */
-button.public-product-compare-link{display:flex;width:fit-content;align-items:center;gap:6px;margin:10px auto 0;color:var(--muted);font-size:11px;font-weight:700}
+.public-variants b{font-size:13px;font-weight:600}
+.public-variants small{color:var(--muted);font-size:10px}
+.public-variants strong{font:700 12px "Poppins",sans-serif}
+.public-product-actions{display:flex;align-items:center;gap:12px}
+.public-stepper{display:flex;flex:0 0 auto;align-items:center;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface)}
+.public-stepper button{display:grid;width:36px;height:36px;place-items:center;border:0;background:none;color:var(--ink)}
+.public-stepper span{min-width:20px;text-align:center;font:600 12px "Poppins",sans-serif}
+button.public-primary,a.public-primary{display:flex;width:100%;min-height:50px;align-items:center;justify-content:center;gap:9px;padding:0 18px;border:0;border-radius:var(--r-sm);background:var(--teal);color:#fff;font-size:13px;font-weight:600}
+.public-primary:hover{background:var(--forest)}
+.public-primary.is-added{background:#2f7d4f}
+a.public-secondary-link{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px;padding:8px;color:var(--teal);font-size:12px;font-weight:600}
+button.public-product-compare-link{display:flex;width:fit-content;align-items:center;gap:6px;margin:14px auto 0;color:var(--muted);font-size:12px;font-weight:600}
 button.public-product-compare-link:hover{color:var(--teal)}
 button.public-product-compare-link.is-active{color:var(--teal)}
 button.public-product-compare-link:disabled{opacity:.4}
-/* Desktop-only thumbnail row — hidden on mobile, where the single hero
-   image + colour-picker list below already cover this. See the 960px
-   breakpoint for where it turns on. */
 .public-product-thumbs{display:none}
-.public-preorder-eta{display:flex;flex-wrap:wrap;gap:4px 10px;margin:10px 0 0;font-size:10px;color:var(--muted)}
+.public-preorder-eta{display:flex;flex-wrap:wrap;gap:4px 12px;margin:12px 0 0;font-size:11px;color:var(--muted)}
 .public-preorder-eta strong{color:var(--ink)}
-.public-preorder-note{margin:10px 0 0;padding:10px 12px;border:1px solid #a6cbc5;border-radius:10px;background:#e9f4f2;color:var(--forest);font-size:10px;line-height:1.5}
-.public-details-card{margin-top:20px;padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff}
-.public-details-card h3{margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
-.public-details-card dl{display:grid;gap:8px;margin:0}
-.public-details-card dl>div{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
-.public-details-card dl>div:last-child{border-bottom:0;padding-bottom:0}
-.public-details-card dt{color:var(--muted);font-size:11px}
-.public-details-card dd{margin:0;font-size:12px;font-weight:700;text-align:right}
+.public-preorder-note{margin:12px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);font-size:11px;line-height:1.55}
+
+/* Accordion: replaces the old always-open Details/Technology cards. */
+.public-accordion{margin-top:22px;border-top:1px solid var(--line)}
+.public-accordion-item{border-bottom:1px solid var(--line)}
+.public-accordion-item summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 2px;cursor:pointer;list-style:none;color:var(--ink);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.public-accordion-item summary::-webkit-details-marker{display:none}
+.public-accordion-item summary .public-accordion-icon{transition:transform .2s ease;color:var(--muted)}
+.public-accordion-item[open] summary .public-accordion-icon{transform:rotate(45deg)}
+.public-accordion-body{display:grid;gap:9px;padding:0 2px 16px}
+.public-accordion-body>div{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.public-accordion-body>div:last-child{border-bottom:0;padding-bottom:0}
+.public-accordion-body dt{color:var(--muted);font-size:12px}
+.public-accordion-body dd{margin:0;font-size:12.5px;font-weight:600;text-align:right}
+
+/* You may also like — reuses the same card component/classes as Shop. */
+.public-related{margin-top:64px;padding-top:8px;border-top:1px solid var(--line)}
+.public-related h2{margin:0 0 20px;font-size:20px;font-weight:700;letter-spacing:-.02em}
 
 /* ── Cart page ──────────────────────────────────────────────────────── */
-/* align-items:start — without it, CSS Grid's default stretch makes the
-   cart-lines list match the height of the taller order-summary sidebar,
-   and since the list has no explicit row sizing, a single cart line then
-   stretches to fill that entire height too: a huge, mostly-empty box
-   around one small row. .public-checkout-layout already had this same
-   fix; this page didn't. */
-.public-cart-layout{display:grid;gap:16px;align-items:start}
+.public-cart-layout{display:grid;gap:20px;align-items:start}
 .public-cart-lines{display:grid;gap:0;margin:0;padding:0;list-style:none}
-.public-cart-line{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:12px;padding:13px;border:1px solid var(--line);border-radius:13px;background:#fff}
-.public-cart-line+.public-cart-line{margin-top:9px}
-.public-cart-thumb{display:grid;width:56px;height:56px;overflow:hidden;place-items:center;border-radius:10px;background:#edf2f0;color:var(--muted)}
+.public-cart-line{display:grid;grid-template-columns:64px minmax(0,1fr) auto;align-items:center;gap:14px;padding:16px 4px;border-bottom:1px solid var(--line)}
+.public-cart-thumb{display:grid;width:64px;height:64px;overflow:hidden;place-items:center;border-radius:var(--r-sm);background:#eeece5;color:var(--muted)}
 .public-cart-copy{display:grid;min-width:0;gap:2px}
-.public-cart-copy b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
-.public-cart-copy small{color:var(--muted);font-size:9px}
-.public-cart-copy strong{margin-top:3px;font:700 11px "JetBrains Mono Variable",monospace}
-.public-cart-line-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.public-remove{display:grid;width:30px;height:30px;place-items:center;border:1px solid var(--line);border-radius:50%;background:#fff;color:var(--muted)}
-.public-remove:hover{border-color:#d99;color:#b23}
+.public-cart-copy b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600}
+.public-cart-copy small{color:var(--muted);font-size:10px}
+.public-cart-copy strong{margin-top:4px;font:700 12px "Poppins",sans-serif}
+.public-cart-line-actions{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
+.public-remove{display:grid;width:30px;height:30px;place-items:center;border:0;border-radius:50%;background:none;color:var(--muted)}
+.public-remove:hover{color:#b23}
 
-.public-order-summary{padding:18px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:0 1px 2px #123d3608,0 12px 32px #123d3608}
-.public-order-summary h2{margin:0 0 12px;font-size:14px;letter-spacing:-.02em}
-.public-summary-lines{display:grid;gap:8px;margin:0 0 12px;padding:0 0 12px;border-bottom:1px solid var(--line);list-style:none}
-.public-summary-lines li{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:11px}
-.public-summary-lines small{display:block;color:var(--muted);font-size:9px}
-.public-summary-lines strong{font:700 11px "JetBrains Mono Variable",monospace;white-space:nowrap}
-.public-total{display:flex;align-items:center;justify-content:space-between;padding:6px 0 14px;font-size:12px}
-.public-total strong{font:700 17px "JetBrains Mono Variable",monospace}
-.public-deposit{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin:0 0 14px;padding:14px;border:1px solid #a6cbc5;border-radius:12px;background:#e9f4f2}
-.public-deposit span{font-size:10px;font-weight:700}
-.public-deposit strong{font:700 14px "JetBrains Mono Variable",monospace;color:var(--teal)}
-.public-deposit p{grid-column:1/-1;margin:3px 0 0;color:var(--muted);font-size:9px;line-height:1.5}
+.public-order-summary{padding:22px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface)}
+.public-order-summary h2{margin:0 0 14px;font-size:15px;letter-spacing:-.02em}
+.public-summary-lines{display:grid;gap:9px;margin:0 0 14px;padding:0 0 14px;border-bottom:1px solid var(--line);list-style:none}
+.public-summary-lines li{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12px}
+.public-summary-lines small{display:block;color:var(--muted);font-size:10px}
+.public-summary-lines strong{font:700 12px "Poppins",sans-serif;white-space:nowrap}
+.public-total{display:flex;align-items:center;justify-content:space-between;padding:6px 0 16px;font-size:13px}
+.public-total strong{font:700 18px "Poppins",sans-serif}
+.public-deposit{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin:0 0 16px;padding:16px;border-radius:var(--r-sm);background:var(--paper)}
+.public-deposit span{font-size:11px;font-weight:600}
+.public-deposit strong{font:700 15px "Poppins",sans-serif;color:var(--teal)}
+.public-deposit p{grid-column:1/-1;margin:4px 0 0;color:var(--muted);font-size:10px;line-height:1.55}
 .public-deposit.is-compact{margin:0}
 .public-order-summary>.public-secondary-link{margin-top:8px}
 
 /* ── Checkout page ──────────────────────────────────────────────────── */
-.public-preorder-banner{display:flex;align-items:flex-start;gap:10px;margin:0 0 14px;padding:12px 14px;border:1px solid #a6cbc5;border-radius:12px;background:#e9f4f2;color:var(--forest);font-size:11px;line-height:1.5}
-.public-preorder-banner-badge{flex:0 0 auto;padding:4px 9px;border-radius:999px;background:var(--teal);color:#fff;font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.public-preorder-banner{display:flex;align-items:flex-start;gap:10px;margin:0 0 16px;padding:14px 16px;border-radius:var(--r-sm);background:var(--paper);color:var(--ink);font-size:12px;line-height:1.55}
+.public-preorder-banner-badge{flex:0 0 auto;padding:4px 10px;border-radius:999px;background:var(--teal);color:#fff;font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
 .public-preorder-banner p{margin:0}
-.public-preorder-banner-list{margin:6px 0 0;padding:0 0 0 16px;font-size:10px;color:var(--forest)}
-.public-error{margin:0 0 14px;padding:10px 12px;border:1px solid #c7d8d5;border-radius:9px;background:#f2f6f5;color:var(--forest);font-size:10px;line-height:1.45}
-.public-checkout-layout{display:grid;gap:16px;align-items:start}
-.public-checkout-form{display:grid;gap:12px}
-.public-step{margin:0;padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff}
-.public-step-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-.public-step-num{display:grid;width:24px;height:24px;flex:0 0 24px;place-items:center;border-radius:50%;background:var(--forest);color:#fff;font:700 11px "JetBrains Mono Variable",monospace}
-.public-step-head h3{margin:0;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
-.public-step-body{display:grid;gap:10px}
-.public-step-body label:not(.public-upload):not(.public-ack){display:grid;gap:5px;color:var(--muted);font-size:9px;font-weight:700}
-.public-step-body input:not([type=checkbox]):not([type=file]),.public-step-body textarea,.public-step-body select{width:100%;min-height:43px;padding:10px 11px;border:1px solid var(--line);border-radius:9px;outline:none;background:#f9fbfa;color:var(--ink);font-size:12px}
-.public-step-body textarea{min-height:70px;resize:vertical}
-/* padding-right clears the arrow icon; text-overflow+nowrap+hidden keeps a
-   long value (Philippine region names run 30+ characters) truncating with
-   an ellipsis instead of running underneath/behind the arrow. */
-.public-step-body select{appearance:none;padding-right:30px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2362736f' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.public-preorder-banner-list{margin:6px 0 0;padding:0 0 0 16px;font-size:11px;color:var(--muted)}
+.public-error{margin:0 0 16px;padding:11px 14px;border-radius:var(--r-sm);background:#fbeeee;color:#7a2323;font-size:11px;line-height:1.5}
+.public-checkout-layout{display:grid;gap:20px;align-items:start}
+.public-checkout-form{display:grid;gap:14px}
+.public-step{margin:0;padding:20px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface)}
+.public-step-head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.public-step-num{display:grid;width:26px;height:26px;flex:0 0 26px;place-items:center;border-radius:50%;background:var(--teal);color:#fff;font:700 12px "Poppins",sans-serif}
+.public-step-head h3{margin:0;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink)}
+.public-step-body{display:grid;gap:12px}
+.public-step-body label:not(.public-upload):not(.public-ack){display:grid;gap:6px;color:var(--muted);font-size:10px;font-weight:600}
+.public-step-body input:not([type=checkbox]):not([type=file]),.public-step-body textarea,.public-step-body select{width:100%;min-height:44px;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r-sm);outline:none;background:var(--surface);color:var(--ink);font-size:13px}
+.public-step-body textarea{min-height:72px;resize:vertical}
+.public-step-body select{appearance:none;padding-right:32px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236b6c68' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center}
 .public-step-body select:disabled{opacity:.55}
-.public-step-body input:focus,.public-step-body textarea:focus,.public-step-body select:focus{border-color:var(--teal);box-shadow:0 0 0 3px #0b77751c}
-/* Region and ZIP each take their own full-width row; City/Municipality and
-   Barangay share a row — matches the reference's grouping. */
-.public-address-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.public-step-body input:focus,.public-step-body textarea:focus,.public-step-body select:focus{border-color:var(--teal)}
+.public-address-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .public-address-grid label:nth-child(1),.public-address-grid label:nth-child(4){grid-column:1/-1}
-.public-methods{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.public-methods button{display:flex;min-height:64px;align-items:center;gap:9px;padding:9px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);text-align:left}
-.public-methods button.is-active{border-color:var(--teal);background:#eff8f6}
+.public-methods{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.public-methods button{display:flex;min-height:66px;align-items:center;gap:10px;padding:11px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);text-align:left}
+.public-methods button.is-active{border-color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal)}
 .public-methods span{display:grid;gap:2px}
-.public-methods b{font-size:11px}
-.public-methods small{color:var(--muted);font-size:8px}
-.public-address{display:grid;gap:10px;overflow:hidden}
-.public-payment-methods{display:grid;gap:9px}
-.public-payment-label{margin:0;color:var(--muted);font-size:10px;font-weight:700}
-.public-payment-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.public-payment-cards button{display:flex;min-width:0;min-height:84px;flex-direction:column;align-items:flex-start;gap:7px;padding:9px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);text-align:left}
-.public-payment-cards button.is-active{border-color:var(--teal);box-shadow:0 0 0 2px #0b77751c;background:#f1faf8}
-.public-payment-cards b{font-size:11px}
-.public-payment-card-qr{width:38px;height:38px;flex:0 0 38px;border:1px solid var(--line);border-radius:8px;background:#fff;object-fit:contain}
-.public-selected-qr{display:flex;flex-direction:column;align-items:center;gap:9px;padding:14px;border:1px solid var(--line);border-radius:14px;background:#f9fbfa}
-.public-selected-qr img{display:block;width:min(100%,280px);height:auto;aspect-ratio:1;object-fit:contain;border-radius:10px}
-.public-selected-qr p{margin:0;color:var(--muted);font-size:10px;text-align:center;line-height:1.45}
-.public-upload{position:relative;display:flex;min-height:70px;align-items:center;gap:10px;padding:12px;border:1px dashed #9bb8b3;border-radius:10px;background:#f9fbfa;color:var(--forest);cursor:pointer}
-.public-upload.has-file{border-style:solid;background:#eff8f6}
+.public-methods b{font-size:12px;font-weight:600}
+.public-methods small{color:var(--muted);font-size:9px}
+.public-address{display:grid;gap:12px;overflow:hidden}
+.public-payment-methods{display:grid;gap:10px}
+.public-payment-label{margin:0;color:var(--muted);font-size:11px;font-weight:600}
+.public-payment-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.public-payment-cards button{display:flex;min-width:0;min-height:86px;flex-direction:column;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);text-align:left}
+.public-payment-cards button.is-active{border-color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal)}
+.public-payment-cards b{font-size:12px;font-weight:600}
+.public-payment-card-qr{width:38px;height:38px;flex:0 0 38px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;object-fit:contain}
+.public-selected-qr{display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--paper)}
+.public-selected-qr img{display:block;width:min(100%,280px);height:auto;aspect-ratio:1;object-fit:contain;border-radius:var(--r-sm)}
+.public-selected-qr p{margin:0;color:var(--muted);font-size:11px;text-align:center;line-height:1.5}
+.public-upload{position:relative;display:flex;min-height:72px;align-items:center;gap:11px;padding:14px;border:1px dashed var(--line);border-radius:var(--r-sm);background:var(--paper);color:var(--teal);cursor:pointer}
+.public-upload.has-file{border-style:solid}
 .public-upload span{display:grid;flex:1;min-width:0;gap:3px}
-.public-upload b{font-size:11px}
-.public-upload small{max-width:100%;overflow:hidden;color:var(--muted);font-size:8px;text-overflow:ellipsis;white-space:nowrap}
+.public-upload b{font-size:12px;font-weight:600}
+.public-upload small{max-width:100%;overflow:hidden;color:var(--muted);font-size:9px;text-overflow:ellipsis;white-space:nowrap}
 .public-upload input{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0}
-.public-proof-note,.public-field-note{margin:0;padding:0 2px;color:var(--muted);font-size:9px;line-height:1.45}
-.public-ack{display:flex;align-items:flex-start;gap:9px;padding:12px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:10px;line-height:1.45}
+.public-proof-note,.public-field-note{margin:0;padding:0 2px;color:var(--muted);font-size:10px;line-height:1.5}
+.public-ack{display:flex;align-items:flex-start;gap:10px;padding:14px;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--muted);font-size:11px;line-height:1.5}
 .public-ack input{width:18px;height:18px;flex:0 0 18px;margin:0;accent-color:var(--teal)}
-/* The final non-refundable acknowledgment gets a warning-toned border to
-   set it apart from the routine "I sent my proof" checkbox above it. */
 .public-ack-warning{border-color:#e3b8b8;background:#fdf4f4}
 
 .public-recipient-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px}
-.public-recipient-head>span{color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
-button.public-recipient-toggle{display:flex;align-items:center;gap:5px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:9px;font-weight:700}
-button.public-recipient-toggle.is-active{border-color:var(--teal);background:#eff8f6;color:var(--teal)}
+.public-recipient-head>span{color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+button.public-recipient-toggle{display:flex;align-items:center;gap:5px;padding:0;border:0;background:none;color:var(--muted);font-size:10px;font-weight:600;border-bottom:1px solid transparent}
+button.public-recipient-toggle.is-active{border-color:var(--teal);color:var(--teal)}
 
-.public-messenger-box{display:grid;gap:8px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
-.public-messenger-box>b{font-size:11px}
-.public-messenger-box ol{margin:0;padding-left:18px;color:var(--muted);font-size:10px;line-height:1.6}
-a.public-messenger-link{display:flex;width:fit-content;align-items:center;gap:7px;padding:10px 16px;border-radius:999px;background:var(--forest);color:#fff;font-size:11px;font-weight:700}
-a.public-messenger-link:hover{background:var(--teal)}
+.public-messenger-box{display:grid;gap:9px;padding:16px;border-radius:var(--r-sm);background:var(--paper)}
+.public-messenger-box>b{font-size:12px}
+.public-messenger-box ol{margin:0;padding-left:18px;color:var(--muted);font-size:11px;line-height:1.65}
+a.public-messenger-link{display:flex;width:fit-content;align-items:center;gap:8px;padding:11px 18px;border-radius:var(--r-sm);background:var(--teal);color:#fff;font-size:12px;font-weight:600}
+a.public-messenger-link:hover{background:var(--forest)}
 
 /* ── Order confirmation ────────────────────────────────────────────── */
-.public-success-icon{display:grid;width:52px;height:52px;margin:0 auto 6px;place-items:center;border-radius:50%;background:#dfeeea;color:var(--forest)}
-.public-success-page h2{margin:9px 0 6px;font-size:26px;letter-spacing:-.035em}
-.public-success-page p{max-width:380px;margin:0;color:var(--muted);font-size:11px;line-height:1.55}
+.public-success-icon{display:grid;width:54px;height:54px;margin:0 auto 8px;place-items:center;border-radius:50%;background:#e5eee8;color:#2f7d4f}
+.public-success-page h2{margin:10px 0 8px;font-size:27px;letter-spacing:-.03em}
+.public-success-page p{max-width:380px;margin:0;color:var(--muted);font-size:12px;line-height:1.6}
 
 /* ── Loading skeleton ───────────────────────────────────────────────── */
-.public-skeleton>div{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:#fff}
-.public-skeleton i{display:block;aspect-ratio:1;background:#e7eeec}
-.public-skeleton span,.public-skeleton b{display:block;height:8px;margin:10px;border-radius:99px;background:#e7eeec}
-.public-skeleton b{width:55%;margin-top:0;margin-bottom:14px}
+.public-skeleton>div{overflow:hidden;border-radius:var(--r-md)}
+.public-skeleton i{display:block;aspect-ratio:3/4;border-radius:var(--r-md);background:#ece9e1}
+.public-skeleton span,.public-skeleton b{display:block;height:9px;margin:12px 0 0;border-radius:99px;background:#ece9e1}
+.public-skeleton b{width:55%;margin-top:0;margin-bottom:16px}
+
+/* ── Cart drawer ────────────────────────────────────────────────────── */
+.public-drawer-overlay{position:fixed;inset:0;z-index:60;background:#0b0f1fa6}
+.public-drawer{position:fixed;top:0;right:0;bottom:0;z-index:61;display:flex;flex-direction:column;width:min(92vw,420px);background:var(--surface);box-shadow:-24px 0 60px #00000026}
+.public-drawer-head{display:flex;align-items:center;justify-content:space-between;padding:20px;border-bottom:1px solid var(--line)}
+.public-drawer-head h2{margin:0;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.public-drawer-close{display:grid;width:34px;height:34px;place-items:center;border:0;border-radius:50%;background:none;color:var(--ink)}
+.public-drawer-close:hover{background:var(--paper)}
+.public-drawer-confirm{display:flex;align-items:center;gap:12px;padding:16px 20px;background:#eef4ef;color:#20472f;font-size:12px;font-weight:600}
+.public-drawer-confirm img{width:42px;height:42px;flex:0 0 42px;border-radius:var(--r-sm);object-fit:cover;background:#eeece5}
+.public-drawer-lines{flex:1;overflow-y:auto;margin:0;padding:6px 20px;list-style:none}
+.public-drawer-empty{display:grid;flex:1;place-content:center;justify-items:center;gap:10px;padding:40px 20px;text-align:center;color:var(--muted)}
+.public-drawer-empty p{margin:0;font-size:12px}
+.public-drawer-foot{padding:18px 20px 22px;border-top:1px solid var(--line)}
+.public-drawer-foot .public-primary{margin-bottom:10px}
+.public-drawer-foot .public-secondary-link{margin:0}
 
 /* ── Breakpoints ────────────────────────────────────────────────────── */
 @media(min-width:640px){
-  .public-main{padding-top:26px}
-  .public-hero{min-height:70svh}
-  .public-hero-text{padding:0 max(16px,calc((100vw - 1160px)/2))}
-  .public-hero-float{top:20px;right:max(16px,calc((100vw - 1160px)/2));padding:12px 16px;gap:12px;max-width:32vw}
-  .public-hero-float strong{font-size:20px}
-  .public-hero-float span{max-width:150px;font-size:9px}
-  .public-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .public-main{padding-top:32px}
+  .public-hero{min-height:82svh}
+  .public-hero-text{padding-bottom:72px}
+  .public-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:30px 22px}
+  .public-scroll-row-wrap{margin:0 max(-18px,calc(-1*(100vw - 1280px)/2 - 18px));padding:0 max(18px,calc((100vw - 1280px)/2))}
+  .public-scroll-item{width:240px}
+  .public-featured-band{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;padding:48px}
+  .public-editorial-band{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch}
+  .public-editorial-band .public-editorial-copy{padding:0 0 0 48px}
+  .public-editorial-media{aspect-ratio:auto}
   .public-filter-bar{grid-template-columns:1.4fr 2fr auto;align-items:center}
-  .public-product-backdrop{min-height:56svh}
-  .public-cart-layout{grid-template-columns:1fr 320px}
-  .public-order-summary{position:sticky;top:88px}
-  /* .public-order-summary is first in the DOM (so it's first on a stacked
-     mobile screen), but it still belongs visually on the right at desktop —
-     `order` puts it back there without touching the DOM/reading order. */
-  .public-checkout-layout{grid-template-columns:1fr 320px}
+  .public-product-backdrop{min-height:60svh}
+  .public-cart-layout{grid-template-columns:1fr 340px}
+  .public-order-summary{position:sticky;top:96px}
+  .public-checkout-layout{grid-template-columns:1fr 340px}
   .public-checkout-layout .public-checkout-form{order:1}
   .public-checkout-layout .public-order-summary{order:2}
-  .public-footer{grid-template-columns:1.4fr auto auto;align-items:start}
+  .public-footer{grid-template-columns:1.4fr auto auto}
 }
 @media(min-width:960px){
-  .public-hero{min-height:78svh}
+  .public-hero{min-height:88svh}
   .public-hero-text{max-width:760px}
-  .public-hero-text p{max-width:520px;font-size:15px}
-  .public-hero-float{padding:16px 20px;gap:14px}
-  .public-hero-float strong{font-size:24px}
-  .public-hero-float span{max-width:170px;font-size:10px}
-  .public-feature{padding:56px 0}
-  .public-feature-copy{padding:0 max(16px,calc((100vw - 1160px)/2))}
-  .public-marquee-item{font-size:18px}
-  .public-page-head h2{font-size:28px}
-  .public-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:22px}
-  .public-card-body{padding:14px 2px}
-  .public-card-name h2{font-size:14px}
-  .public-card-meta strong{font-size:14px}
+  .public-hero-text p{max-width:520px;font-size:16px}
+  .public-feature{padding:72px 0}
+  .public-feature-copy{padding:0 max(18px,calc((100vw - 1280px)/2))}
+  .logoloop-item{font-size:18px}
+  .public-page-head h2{font-size:29px}
+  .public-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:34px 26px}
+  .public-card-body{padding:15px 1px}
+  .public-card-name h2{font-size:15px}
+  .public-card-meta strong{font-size:15px}
   .public-nav{min-height:72px}
-  .public-logo{height:44px}
+  .public-nav.is-scrolled{min-height:64px}
+  .public-logo{height:38px}
+  .public-nav-mobile-toggle,.public-mobile-drawer,.public-mobile-drawer-overlay{display:none!important}
 
-  /*
-    Desktop product page: a real two-column layout (image + thumbnails on
-    the left, info panel on the right, side by side) instead of mobile's
-    dark full-bleed backdrop with the info sheet overlaid on top of it.
-    Mobile keeps the overlay treatment entirely — nothing above this
-    breakpoint touches it.
-  */
-  .public-product-stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;align-items:start;max-width:1160px;margin:0 auto;padding:32px max(16px,calc((100vw - 1160px)/2)) 60px}
-  .public-product-backdrop{position:sticky;top:88px;min-height:0;aspect-ratio:1;border-radius:24px}
+  .public-product-stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start;max-width:1280px;margin:0 auto;padding:36px max(18px,calc((100vw - 1280px)/2)) 64px}
+  .public-related{grid-column:1/-1}
+  .public-product-backdrop{position:sticky;top:96px;min-height:0;aspect-ratio:1;border-radius:var(--r-md)}
   .public-product-back{display:none}
   .public-product-sheet{margin-top:0;padding:0;border-radius:0;background:transparent}
-  .public-product-thumbs{display:flex;flex-wrap:wrap;gap:8px;position:absolute;left:16px;right:16px;bottom:16px;z-index:2}
-  .public-product-thumb{width:52px;height:52px;flex:0 0 52px;overflow:hidden;border:2px solid transparent;border-radius:10px;background:#ffffff1a;padding:0}
+  .public-product-thumbs{display:flex;flex-wrap:wrap;gap:9px;position:absolute;left:18px;right:18px;bottom:18px;z-index:2}
+  .public-product-thumb{width:52px;height:52px;flex:0 0 52px;overflow:hidden;border:2px solid transparent;border-radius:var(--r-sm);background:#ffffff1a;padding:0}
   .public-product-thumb.is-active{border-color:#fff}
   .public-product-thumb-image{width:100%;height:100%}
   .public-product-thumb-image>img{width:100%;height:100%;object-fit:cover}
@@ -510,31 +540,24 @@ a.public-messenger-link:hover{background:var(--teal)}
   .public-product-thumb .public-placeholder img{width:60%;opacity:.8;filter:brightness(0) invert(1)}
   .public-product-thumb .public-placeholder span{display:none}
 
-  /*
-    Right-panel hierarchy, cleaned up: title stacked above a large price
-    (not squeezed onto one row together), the colour picker as a row of
-    compact pills instead of full-width stacked boxes, and the SKU/
-    category/deposit block as plain divided lines rather than another
-    bordered card — three boxed cards stacked on top of each other read as
-    clutter. Technology keeps its one card, since it's the only block with
-    real multi-line content worth setting apart.
-  */
-  .public-breadcrumb{margin-bottom:20px}
+  .public-breadcrumb{margin-bottom:22px}
   .public-product-heading{flex-direction:column;align-items:flex-start;gap:2px}
-  .public-product-heading h1{font-size:26px}
-  .public-product-price{font-size:26px;margin-top:6px}
-  .public-variants{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}
-  .public-variants>button{display:inline-flex;min-height:auto;width:auto;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 14px}
-  .public-variants strong{font-size:10px}
+  .public-product-heading h1{font-size:27px}
+  .public-product-price{font-size:27px;margin-top:6px}
+  .public-variants{display:flex;flex-wrap:wrap;gap:9px;margin:20px 0}
+  .public-variants>button{display:inline-flex;min-height:auto;width:auto;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 15px}
+  .public-variants strong{font-size:11px}
   .public-product-actions{margin-top:4px}
-  button.public-product-compare-link{margin:12px 0 0}
-  .public-details-plain{border:0;padding:18px 0 0;border-top:1px solid var(--line);border-radius:0;background:transparent}
-  .public-details-plain dl>div{padding-bottom:9px}
+  button.public-product-compare-link{margin:14px 0 0}
+}
+@media(max-width:959px){
+  .public-nav-links{display:none}
+  .public-nav-search{display:none}
+  .public-nav-mobile-toggle{display:grid;width:38px;height:38px;place-items:center;border:0;border-radius:50%;background:none;color:inherit}
 }
 @media(max-width:380px){
-  .public-main{padding-inline:10px}
-  .public-filter-bar{padding:11px}
-  .public-card-body{padding:8px}
+  .public-main{padding-inline:12px}
+  .public-filter-bar{padding-bottom:14px}
   .public-card-meta{align-items:flex-start;flex-direction:column}
   .public-methods{grid-template-columns:1fr}
   .public-payment-cards{gap:6px}
