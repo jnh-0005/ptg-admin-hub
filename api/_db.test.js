@@ -104,6 +104,34 @@ describe("SQLite -> Postgres dialect translation", () => {
     const sql = "SELECT id, name FROM inventory WHERE quantity > ? ORDER BY id DESC LIMIT 10";
     expect(translateDialect(sql)).toBe(sql);
   });
+
+  // Real bug: completing an order never actually decremented stock in
+  // production. saveOrder() (src/lib/data.js) floors a stock UPDATE at zero
+  // with SQLite's two-argument MAX(a, b) scalar form — valid SQLite, but
+  // Postgres's MAX()/MIN() are aggregates only, take exactly one argument,
+  // and raised "function max(integer, integer) does not exist" on this
+  // exact shape every time an order was completed. Postgres's equivalent is
+  // GREATEST()/LEAST().
+  it("turns SQLite's two-argument MAX(a, b) into Postgres's GREATEST(a, b)", () => {
+    expect(translateDialect("UPDATE inventory_variants SET quantity = MAX(0, quantity + ?) WHERE id = ?")).toBe(
+      "UPDATE inventory_variants SET quantity = GREATEST(0, quantity + ?) WHERE id = ?",
+    );
+    expect(translateDialect("UPDATE inventory SET quantity = MAX(0, quantity + ?) WHERE id = ?")).toBe(
+      "UPDATE inventory SET quantity = GREATEST(0, quantity + ?) WHERE id = ?",
+    );
+    expect(translateDialect("UPDATE freebies SET quantity = MAX(0, quantity + ?) WHERE id = ?")).toBe(
+      "UPDATE freebies SET quantity = GREATEST(0, quantity + ?) WHERE id = ?",
+    );
+  });
+
+  it("turns SQLite's two-argument MIN(a, b) into Postgres's LEAST(a, b)", () => {
+    expect(translateDialect("SET cap = MIN(10, cap + ?)")).toBe("SET cap = LEAST(10, cap + ?)");
+  });
+
+  it("leaves a genuine single-argument aggregate MAX(column) untouched", () => {
+    const sql = "SELECT MAX(id) FROM orders";
+    expect(translateDialect(sql)).toBe(sql);
+  });
 });
 
 describe("runStatements / FIRST_INSERT_ID", () => {

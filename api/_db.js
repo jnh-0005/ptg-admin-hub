@@ -93,6 +93,17 @@ export function translateDialect(sql) {
   out = out.replace(/\bWHERE\s+0\b/gi, "WHERE FALSE");
   out = out.replace(/\bWHERE\s+1\b/gi, "WHERE TRUE");
 
+  // SQLite's MAX(a, b) / MIN(a, b) two-argument scalar "greatest of / least
+  // of" form (used to floor a stock UPDATE at zero, e.g.
+  // "quantity = MAX(0, quantity + ?)") vs. Postgres, where MAX()/MIN() are
+  // aggregates only, take exactly one argument, and raise "function
+  // max(integer, integer) does not exist" on this shape. Postgres's
+  // equivalent is GREATEST()/LEAST(). Only rewrites calls with a top-level
+  // comma — the aggregate form never has one — so a genuine single-argument
+  // MAX(column) is left untouched.
+  out = out.replace(/\bMAX\(([^(),]+),\s*([^()]+)\)/gi, "GREATEST($1, $2)");
+  out = out.replace(/\bMIN\(([^(),]+),\s*([^()]+)\)/gi, "LEAST($1, $2)");
+
   // INSERT OR IGNORE INTO settings (...) -> INSERT INTO settings (...) ON CONFLICT (id) DO NOTHING
   if (/^\s*INSERT OR IGNORE INTO settings\b/i.test(sql)) {
     out = out.replace(/INSERT OR IGNORE INTO/i, "INSERT INTO");
