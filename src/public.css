@@ -147,6 +147,22 @@ button.public-compare-clear:hover{color:#b23}
    complaint. min-width:0 on the card lets its content shrink instead of
    forcing the row wider than the viewport. */
 .public-compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+/*
+  All 3 paddles beside each other on one row, not 2 then a lone 3rd card
+  wrapping below — scoped to below 640px specifically (max-width, not just
+  a bare rule) so it can never leak into and fight the desktop centering
+  rule in the min-width:640px block right after this. data-count is set
+  from selected.length in JSX.
+*/
+@media(max-width:639px){
+  .public-compare-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .public-compare-grid[data-count="3"] .public-compare-card{padding:6px;gap:3px}
+  .public-compare-grid[data-count="3"] .public-compare-card h2{font-size:10px;line-height:1.25}
+  .public-compare-grid[data-count="3"] .public-compare-card strong{font-size:10px}
+  .public-compare-grid[data-count="3"] .public-inline-badge{font-size:7px;padding:2px 6px}
+  .public-compare-grid[data-count="3"] .public-compare-remove{top:4px;right:4px;width:20px;height:20px}
+  .public-compare-grid[data-count="3"] .public-secondary-link{margin-top:4px;padding:4px;font-size:9px}
+}
 @media(min-width:640px){
   /*
     minmax(220px,1fr) let each card's column — and its aspect-ratio:1 image

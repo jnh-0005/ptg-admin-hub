@@ -1019,7 +1019,7 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
         </div>
       </section>
 
-      <div className="public-compare-grid">
+      <div className="public-compare-grid" data-count={selected.length}>
         {selected.map((product) => {
           const prices = product.choices.map((choice) => choice.price);
           const low = Math.min(...prices);
