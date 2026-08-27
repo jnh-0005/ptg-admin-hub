@@ -19,7 +19,8 @@ export default async function handler(req, res) {
 
   try {
     await requireUser(req);
-  } catch {
+  } catch (err) {
+    console.error("unauthorized:", err);
     res.status(401).json({ error: "unauthorized" });
     return;
   }
