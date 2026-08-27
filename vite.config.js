@@ -14,4 +14,11 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
   },
+  server: {
+    // In production, Vercel serves api/query.js at this same path. In dev,
+    // server/dev-api.mjs mounts the identical handler locally.
+    proxy: {
+      "/api": process.env.DEV_API_URL || "http://localhost:8788",
+    },
+  },
 });
