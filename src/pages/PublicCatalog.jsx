@@ -39,6 +39,11 @@ import LogoLoop from "../components/LogoLoop";
 // public API returns only "available"/"unavailable") — this just bounds how
 // many of one colour a single order line can request.
 const MAX_ORDER_QTY = 10;
+// A fixed duration+ease, not the app's usual spring, specifically for the
+// Accordion's height/opacity/position motion — a spring has no fixed
+// settle time and reads as an uneven, slightly wobbly reveal on a coarse
+// property like height. This one's a clean, brief, decisive open/close.
+const ACCORDION_EASE = { duration: 0.28, ease: [0.4, 0, 0.2, 1] };
 const MAX_PROOF_CHARS = 150000;
 const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 const PROOF_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
@@ -1558,7 +1563,16 @@ function Accordion({ items, defaultOpenIndex = 0 }) {
       {items.map((item, index) => {
         const isOpen = openIndex === index;
         return (
-          <div className="public-accordion-item" key={item.title}>
+          // `layout` here is what makes every item below an opening/closing
+          // panel glide to its new position instead of jumping there the
+          // instant the height changes — without it the panel animates
+          // smoothly but everything after it teleports, which is the
+          // "weird"/janky part. A plain duration+ease (not the app's usual
+          // spring) is used for the height/opacity themselves: a spring
+          // has no fixed settle time, and on a property as coarse as
+          // height that reads as an uneven, slightly wobbly reveal rather
+          // than a clean open.
+          <motion.div className="public-accordion-item" key={item.title} layout="position" transition={ACCORDION_EASE}>
             <button
               type="button"
               className="public-accordion-summary"
@@ -1575,13 +1589,13 @@ function Accordion({ items, defaultOpenIndex = 0 }) {
                   initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
                   animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
                   exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-                  transition={spring}
+                  transition={ACCORDION_EASE}
                 >
                   <div className="public-accordion-body">{item.body}</div>
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
+          </motion.div>
         );
       })}
     </div>
