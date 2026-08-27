@@ -259,7 +259,20 @@ function Admin() {
   );
 }
 
+/**
+ * Domains meant to be handed out as "the shop's own address" — visiting the
+ * bare root on one of these should land a shopper straight in the catalog,
+ * not on the admin sign-in screen. Everything else (ptg-admin-hub.vercel.app,
+ * localhost during dev) keeps its existing root = admin behavior; this list
+ * only redirects hosts explicitly added to it.
+ */
+const STOREFRONT_HOSTNAMES = new Set(["shop-paddletogo.vercel.app"]);
+
 export default function App() {
   if (isPublicCatalog(window.location.pathname)) return <PublicCatalog />;
+  if (window.location.pathname === "/" && STOREFRONT_HOSTNAMES.has(window.location.hostname)) {
+    window.location.replace(PUBLIC_CATALOG_PATH);
+    return null;
+  }
   return <Admin />;
 }
