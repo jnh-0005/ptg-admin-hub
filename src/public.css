@@ -105,7 +105,7 @@
 .public-quick-add.is-added{background:var(--teal)}
 .public-quick-add:disabled{background:var(--line);color:var(--muted);box-shadow:none}
 .public-view{display:flex;align-items:center;gap:4px;margin-top:9px;color:var(--teal);font-size:9px;font-weight:700}
-.public-compare-toggle{display:flex;align-items:center;gap:4px;margin-top:8px;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.public-compare-toggle{display:flex;width:fit-content;align-items:center;gap:3px;margin:8px auto 0;padding:3px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:8px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
 .public-compare-toggle.is-active{border-color:var(--teal);background:#eff8f6;color:var(--teal)}
 .public-compare-toggle:disabled{opacity:.4}
 
