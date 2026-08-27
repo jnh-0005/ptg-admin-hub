@@ -111,7 +111,7 @@ const PADDLE_SPECS = {
   },
   "joola v persus": {
     core: "Response polymer core, 16mm",
-    surface: "Textured carbon fiber (JOOLA Vision/Perseus line) with SK Film vibration layer",
+    surface: "Textured carbon fiber, SK Film vibration layer",
     weight: "≈7.8 – 8.0 oz",
   },
   "honolulu j6cr": {
@@ -130,7 +130,7 @@ const PADDLE_SPECS = {
     weight: "8.0 – 8.3 oz",
   },
   "bread and butter loco": {
-    core: "Full-foam CFC layup (carbon/fiberglass/carbon) with EPP + EVA foam ring",
+    core: "CFC layup (carbon/fiberglass/carbon) + EPP/EVA foam ring",
     surface: "T-700 raw carbon fiber",
     weight: "7.8 – 8.1 oz, depending on shape",
   },
@@ -1006,7 +1006,20 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
       </div>
 
       <div className="public-compare-table-wrap">
+        {/*
+          A fixed colgroup, not the browser's default auto sizing, is what
+          actually keeps every paddle's column beside the others at an equal
+          width instead of one column ballooning to fit its longest spec line
+          and pushing the rest off-screen — the exact failure mode on
+          pickleclubdavao.com/shop/compare's own mobile layout.
+        */}
         <table className="public-compare-table">
+          <colgroup>
+            <col className="public-compare-col-label" />
+            {selected.map((product) => (
+              <col key={product.id} style={{ width: `${100 / selected.length}%` }} />
+            ))}
+          </colgroup>
           <tbody>
             <tr>
               <th scope="row">Category</th>
