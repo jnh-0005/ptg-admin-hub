@@ -252,6 +252,11 @@ button.public-compare-clear:hover{color:#b23}
 .public-product-backdrop .public-placeholder span{color:#ffffff8a}
 .public-product-sheet{position:relative;z-index:1;margin-top:-22px;padding:22px max(16px,calc((100vw - 1160px)/2)) 40px;border-radius:22px 22px 0 0;background:var(--paper)}
 .public-breadcrumb{display:flex;align-items:center;gap:6px;margin:0 0 12px;color:var(--muted);font-size:11px;font-weight:600}
+/* Mobile already has the circular back-arrow over the hero image for "back
+   to shop" — the breadcrumb line is redundant there and just eats space
+   above the title. Desktop keeps it (see the 960px breakpoint below): the
+   back-arrow is hidden there and the breadcrumb is the only way back. */
+@media(max-width:639px){.public-breadcrumb{display:none}}
 .public-breadcrumb a{color:var(--teal)}
 .public-breadcrumb a:hover{text-decoration:underline}
 .public-breadcrumb span{color:var(--ink);font-weight:700}
