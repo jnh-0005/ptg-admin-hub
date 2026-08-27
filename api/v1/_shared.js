@@ -144,7 +144,11 @@ export async function createOrder(db, body) {
     if (!row || (input.variant_id && row.variant_id !== key) || (input.variant_id && row.variant_active !== 1)) return apiError(409, "item_unavailable", "one or more selected items are no longer available");
     if (!positiveInt(input.quantity)) return apiError(422, "validation_error", "quantity must be an integer from 1 to 20");
     const available = input.variant_id ? Number(row.variant_quantity || 0) : Number(row.product_quantity || 0);
-    if (available < input.quantity) return apiError(409, "item_unavailable", "one or more selected items are no longer available");
+    // Zero on hand is a pre-order, not a dead end — PTG imports every paddle
+    // in batches, so nothing in the catalog is ever truly unbuyable. Only cap
+    // an order line against real, counted stock when there is real stock to
+    // exceed; a pre-order line has no live quantity to check against.
+    if (available > 0 && available < input.quantity) return apiError(409, "item_unavailable", "one or more selected items are no longer available");
     const unit = Math.max(0, Number(input.variant_id ? row.selling_price_php || row.sell_price : row.sell_price || 0));
     lines.push({ product_id: row.product_id, variant_id: row.variant_id || null, name: row.name + (row.color ? ` (${row.color})` : ""), quantity: input.quantity, unit, cost: Math.max(0, Number(row.unit_cost || 0)) });
   }

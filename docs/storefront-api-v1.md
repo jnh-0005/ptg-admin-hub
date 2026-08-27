@@ -31,7 +31,9 @@ Requires the same bearer key and an `Idempotency-Key` matching `[A-Za-z0-9._-]{8
 }
 ```
 
-The server validates fields, re-reads active and available inventory, rejects stale or duplicate lines, uses database prices rather than client prices, calculates the total and exact 50% deposit, and creates a `Pending` order plus order items. It does not decrement stock. It does not accept payment credentials. The acknowledgment is stored with the order. Response is `201` with order number, status, totals, deposit, and balance only.
+The server validates fields, re-reads active inventory, rejects stale or duplicate lines, uses database prices rather than client prices, calculates the total and exact 50% deposit, and creates a `Pending` order plus order items. It does not decrement stock. It does not accept payment credentials. The acknowledgment is stored with the order. Response is `201` with order number, status, totals, deposit, and balance only.
+
+Zero on-hand quantity is a pre-order, not a rejection — PTG imports every paddle in batches, so nothing in the catalog is ever unbuyable. A line is only capped against real, counted stock when `quantity > 0` for that product/variant; a pre-order line (`quantity = 0`) has no live count to exceed and always passes. `item_unavailable` now only fires for a genuinely gone product (archived, deleted, or an inactive variant), or for exceeding real stock on a line that has some.
 
 ## configuration
 

@@ -90,6 +90,7 @@
 .public-card-image{aspect-ratio:1;overflow:hidden;border-radius:14px;background:#edf2f0}
 .public-card-image>img,.public-product-image>img,.public-cart-thumb img{width:100%;height:100%;object-fit:cover}
 .public-card-badge{position:absolute;top:9px;left:9px;padding:4px 8px;border-radius:999px;background:#17312dcc;color:#fff;font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.public-card-badge.is-preorder{background:#0b7775e0}
 .public-placeholder{display:grid;width:100%;height:100%;place-content:center;justify-items:center;gap:8px;background:linear-gradient(150deg,#e7efec,#d3e4de);color:var(--muted)}
 .public-placeholder img{width:46%;height:auto;max-height:38%;object-fit:contain;opacity:.4}
 .public-placeholder span{font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#8199937d}
@@ -104,6 +105,26 @@
 .public-quick-add.is-added{background:var(--teal)}
 .public-quick-add:disabled{background:var(--line);color:var(--muted);box-shadow:none}
 .public-view{display:flex;align-items:center;gap:4px;margin-top:9px;color:var(--teal);font-size:9px;font-weight:700}
+.public-compare-toggle{display:flex;align-items:center;gap:4px;margin-top:8px;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.public-compare-toggle.is-active{border-color:var(--teal);background:#eff8f6;color:var(--teal)}
+.public-compare-toggle:disabled{opacity:.4}
+
+/* ── Compare bar + compare page ────────────────────────────────────── */
+.public-compare-bar{position:fixed;left:50%;bottom:16px;z-index:20;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 16px;border-radius:999px;background:var(--forest);color:#fff;box-shadow:0 12px 32px #05140f4d;transform:translateX(-50%)}
+.public-compare-bar span{font-size:11px;font-weight:700;white-space:nowrap}
+.public-compare-bar-link{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:#fff;color:var(--forest);font-size:11px;font-weight:800;white-space:nowrap}
+.public-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.public-compare-card{position:relative;display:grid;gap:6px;padding:16px;border:1px solid var(--line);border-radius:16px;background:#fff}
+.public-compare-remove{position:absolute;top:10px;right:10px;z-index:1;display:grid;width:26px;height:26px;place-items:center;border:0;border-radius:50%;background:#f0f2f1;color:var(--muted)}
+.public-compare-remove:hover{background:#e3e0da;color:var(--ink)}
+.public-compare-image{aspect-ratio:1;overflow:hidden;border-radius:12px;background:#edf2f0}
+.public-compare-card h2{margin:2px 0 0;font-size:14px;font-weight:700;letter-spacing:-.02em}
+.public-compare-card strong{font:700 13px "JetBrains Mono Variable",monospace}
+.public-inline-badge{justify-self:start;padding:3px 8px;border-radius:999px;background:#e9f4f2;color:var(--teal);font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.public-inline-badge.is-preorder{background:#f2f6f5;color:var(--forest)}
+.public-compare-colours{display:grid;gap:6px;margin:6px 0 0;padding-top:10px;border-top:1px solid var(--line);list-style:none}
+.public-compare-colours li{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px}
+.public-compare-colours small{color:var(--muted);font-size:9px}
 
 /* ── Empty / error / loading states ────────────────────────────────── */
 .public-state{display:grid;min-height:240px;place-content:center;justify-items:center;padding:32px;border:1px solid var(--line);border-radius:16px;background:#fff;text-align:center}
@@ -152,6 +173,7 @@
 .public-primary{display:flex;width:100%;min-height:48px;align-items:center;justify-content:center;gap:8px;padding:0 16px;border:0;border-radius:999px;background:linear-gradient(120deg,var(--forest),var(--teal));color:#fff;font-size:12px;font-weight:750}
 .public-primary.is-added{background:linear-gradient(120deg,var(--teal),var(--forest))}
 .public-secondary-link{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;padding:8px;color:var(--teal);font-size:11px;font-weight:700}
+.public-preorder-note{margin:10px 0 0;padding:10px 12px;border:1px solid #a6cbc5;border-radius:10px;background:#e9f4f2;color:var(--forest);font-size:10px;line-height:1.5}
 .public-details-card{margin-top:20px;padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff}
 .public-details-card h3{margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
 .public-details-card dl{display:grid;gap:8px;margin:0}

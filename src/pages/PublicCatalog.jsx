@@ -45,14 +45,115 @@ const PAYMENT_METHODS = [
   { id: "instapay", label: "InstaPay", image: "/images/payment-instapay.png" },
 ];
 const CART_STORAGE_KEY = "ptg-public-cart-v2";
+const COMPARE_STORAGE_KEY = "ptg-public-compare-v1";
+const MAX_COMPARE = 3;
 
 const money = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+// "available" means real, counted stock is on hand right now. Zero stock is
+// no longer a dead end — every paddle PTG carries is imported in batches, so
+// a colour with nothing on hand is a Pre-Order, not Sold Out, and stays fully
+// orderable. See createOrder() in api/v1/_shared.js for the matching
+// server-side rule: it only caps an order line against real stock when there
+// is real stock to exceed.
 const available = (choice) => Number(choice?.quantity || 0) > 0;
 const clean = (value) => String(value || "").trim();
+
+/**
+ * Real manufacturer/retailer-sourced specs, researched per model (JustPaddles,
+ * Selkirk.com, RPM Pickleball, Pickleheads, Pickle Times, bnbpickleball.com —
+ * see chat history for the full source list). PTG's inventory doesn't record
+ * which exact shape (elongated/widebody/hybrid) it stocks per model, so
+ * weight is given as the honest range across a model's shape options rather
+ * than asserting one. A model with no confidently-matched source — "Joola
+ * IV" doesn't match any real JOOLA model (their line is Perseus/Hyperion/
+ * Vision) — is simply left out: no spec section shows rather than a guessed
+ * one.
+ */
+const PADDLE_SPECS = {
+  "franklin c45 alw": {
+    core: "PowerFlex polymer core",
+    surface: "45° peel-ply T700 carbon fiber face",
+    weight: "Varies by core thickness (12.7mm / 14mm / 16mm)",
+  },
+  "kamito alpha x": {
+    core: "Triple Foam Core (MPP + EVA foam)",
+    surface: "Toray raw carbon fiber",
+    weight: "≈225g (7.9 oz), 16mm core",
+  },
+  "kamito dominus": {
+    core: "EPP foam + EVA core",
+    surface: "3-layer Japanese Toray carbon fiber",
+    weight: "≈225g (7.9 oz), 16mm core",
+  },
+  "rpm q2": {
+    core: "Molded EPP foam, 3mm groove channels",
+    surface: "FRICTION CarbonBite carbon fiber",
+    weight: "7.5 – 8.0 oz across 14mm/16mm cores",
+  },
+  "rpm v2": {
+    core: "Tri-density honeycomb + EVA foam",
+    surface: "CarbonBite carbon fiber",
+    weight: "7.6 – 8.1 oz across 14mm/16mm cores",
+  },
+  "zocker aspire": {
+    core: "Hot-pressed honeycomb",
+    surface: "T700 carbon fiber (Japan-sourced)",
+    weight: "≈225 – 235 g, 16mm core",
+  },
+  "sypik triton 5": {
+    core: "Honeycomb core, 16mm",
+    surface: "Raw T700 carbon fiber",
+    weight: "≈227g (7.85 oz)",
+  },
+  "joola v persus": {
+    core: "Response polymer core, 16mm",
+    surface: "Textured carbon fiber (JOOLA Vision/Perseus line) with SK Film vibration layer",
+    weight: "≈7.8 – 8.0 oz",
+  },
+  "honolulu j6cr": {
+    core: "Core Reactor + Dynamic PowerFlex Technology",
+    surface: "Control Joint Technology carbon face",
+    weight: "8.0 – 8.2 oz, 16mm core",
+  },
+  "honolulu j6cr crystal blue": {
+    core: "Core Reactor + Dynamic PowerFlex Technology",
+    surface: "Control Joint Technology carbon face",
+    weight: "8.0 – 8.2 oz, 16mm core",
+  },
+  "honolulu j2cr crystal": {
+    core: "Core Reactor technology (hybrid shape)",
+    surface: "Control Joint Technology carbon face",
+    weight: "8.0 – 8.3 oz",
+  },
+  "bread and butter loco": {
+    core: "Full-foam CFC layup (carbon/fiberglass/carbon) with EPP + EVA foam ring",
+    surface: "T-700 raw carbon fiber",
+    weight: "7.8 – 8.1 oz, depending on shape",
+  },
+};
+// Every Selkirk OMNI and Boomstik colourway PTG carries shares the same
+// underlying technology, so it's matched by name prefix once rather than
+// repeated for each of the nine colourways.
+const SELKIRK_OMNI_SPEC = {
+  core: "ReactCore — PureFoam + EVA Power Ring, 16mm",
+  surface: "Multistrata T700 carbon fiber, InfiniGrit surface",
+  weight: "7.9 – 8.2 oz (Elongated or Widebody)",
+};
+const SELKIRK_BOOMSTIK_SPEC = {
+  core: "BoomCore — PureFoam + EVA Power Ring, 16mm",
+  surface: "3-layer T700 carbon fiber, InfiniGrit surface",
+  weight: "≈7.9 oz, Elongated shape",
+};
+function specFor(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (key.startsWith("selkirk omni")) return SELKIRK_OMNI_SPEC;
+  if (key.startsWith("selkirk boomst")) return SELKIRK_BOOMSTIK_SPEC;
+  return PADDLE_SPECS[key] || null;
+}
 
 /**
  * Public-safe catalog read, via the dedicated storefront API (api/v1/catalog.js)
@@ -105,6 +206,16 @@ function readStoredCart() {
     const raw = window.localStorage.getItem(CART_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredCompare() {
+  try {
+    const raw = window.localStorage.getItem(COMPARE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x) => Number.isInteger(x)) : [];
   } catch {
     return [];
   }
@@ -205,6 +316,7 @@ export default function PublicCatalog() {
   const [status, setStatus] = useState("loading");
   const [reconnecting, setReconnecting] = useState(false);
   const [cart, setCart] = useState(() => readStoredCart());
+  const [compareIds, setCompareIds] = useState(() => readStoredCompare());
   const hasCatalog = useRef(false);
 
   const refresh = async (background = false) => {
@@ -235,12 +347,36 @@ export default function PublicCatalog() {
     }
   }, [cart]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COMPARE_STORAGE_KEY, JSON.stringify(compareIds));
+    } catch {
+      /* same as the cart: a blocked storage jar just means it won't survive a reload */
+    }
+  }, [compareIds]);
+
   const cartCount = cart.reduce((total, line) => total + line.quantity, 0);
   const cartTotal = cart.reduce((total, line) => total + line.price * line.quantity, 0);
 
-  /** Adds `quantity` of one product+colour to the cart, merging with any existing line. */
+  /** Adds or drops one product from the compare tray, capped at MAX_COMPARE. */
+  const toggleCompare = (productId) => {
+    setCompareIds((current) =>
+      current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : current.length >= MAX_COMPARE
+          ? current
+          : [...current, productId],
+    );
+  };
+
+  /**
+   * Adds `quantity` of one product+colour to the cart, merging with any
+   * existing line. A colour with nothing on hand is a pre-order, not a dead
+   * end, so this no longer refuses to add it — only a missing product/colour
+   * itself is refused.
+   */
   const addToCart = (product, choice, quantity = 1) => {
-    if (!product || !available(choice)) return;
+    if (!product || !choice) return;
     const key = `${product.id}:${choice.id || "base"}`;
     setCart((current) => {
       const existing = current.find((line) => line.key === key);
@@ -286,9 +422,13 @@ export default function PublicCatalog() {
     <BrowserRouter basename={PUBLIC_CATALOG_PATH}>
       <div className="public-shell">
         <Routes>
-          <Route element={<Layout cartCount={cartCount} />}>
-            <Route index element={<Shop addToCart={addToCart} />} />
+          <Route element={<Layout cartCount={cartCount} compareCount={compareIds.length} />}>
+            <Route index element={<Shop addToCart={addToCart} compareIds={compareIds} toggleCompare={toggleCompare} />} />
             <Route path="paddle/:id" element={<ProductPage addToCart={addToCart} />} />
+            <Route
+              path="compare"
+              element={<ComparePage compareIds={compareIds} toggleCompare={toggleCompare} />}
+            />
             <Route
               path="cart"
               element={<CartPage cart={cart} total={cartTotal} onQuantity={updateQuantity} onRemove={removeLine} reduce={reduce} />}
@@ -336,7 +476,7 @@ function BackToTop() {
 }
 
 /** Header + footer chrome shared by every storefront route; the routed page fills the middle. */
-function Layout({ cartCount }) {
+function Layout({ cartCount, compareCount = 0 }) {
   return (
     <>
       <header className="public-nav">
@@ -353,6 +493,23 @@ function Layout({ cartCount }) {
       </header>
 
       <Outlet context={{}} />
+
+      <AnimatePresence>
+        {compareCount > 0 && (
+          <motion.div
+            className="public-compare-bar"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={spring}
+          >
+            <span>{compareCount} paddle{compareCount === 1 ? "" : "s"} selected</span>
+            <Link to="compare" className="public-compare-bar-link">
+              Compare <ArrowRight size={14} />
+            </Link>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <footer className="public-footer">
         <div className="public-footer-brand">
@@ -403,7 +560,7 @@ function useShopData() {
   return { products, status, reconnecting, refresh };
 }
 
-function Shop({ addToCart }) {
+function Shop({ addToCart, compareIds, toggleCompare }) {
   const { products, status, reconnecting, refresh } = useShopData();
   const [justAdded, setJustAdded] = useState(null);
   const [search, setSearch] = useState("");
@@ -550,7 +707,7 @@ function Shop({ addToCart }) {
               >
                 <Link to={`paddle/${product.id}`} aria-label={`View ${product.name}`}>
                   <ProductImage product={product} choice={product.choices[0]} className="public-card-image" />
-                  {!inStock && <span className="public-card-badge">Sold out</span>}
+                  {!inStock && <span className="public-card-badge is-preorder">Pre-order</span>}
                 </Link>
                 <div className="public-card-body">
                   <Link to={`paddle/${product.id}`}>
@@ -562,10 +719,8 @@ function Shop({ addToCart }) {
                       <button
                         type="button"
                         className={`public-quick-add ${justAddedThis ? "is-added" : ""}`}
-                        disabled={!available(singleChoice)}
-                        aria-label={available(singleChoice) ? `Add ${product.name} to cart` : `${product.name} is sold out`}
+                        aria-label={available(singleChoice) ? `Add ${product.name} to cart` : `Pre-order ${product.name}`}
                         onClick={() => {
-                          if (!available(singleChoice)) return;
                           addToCart(product, singleChoice, 1);
                           setJustAdded(product.id);
                           window.setTimeout(() => setJustAdded((current) => (current === product.id ? null : current)), 1600);
@@ -579,6 +734,15 @@ function Shop({ addToCart }) {
                       </Link>
                     )}
                   </div>
+                  <button
+                    type="button"
+                    className={`public-compare-toggle ${compareIds.includes(product.id) ? "is-active" : ""}`}
+                    disabled={!compareIds.includes(product.id) && compareIds.length >= MAX_COMPARE}
+                    onClick={() => toggleCompare(product.id)}
+                    aria-pressed={compareIds.includes(product.id)}
+                  >
+                    {compareIds.includes(product.id) ? <Check size={12} /> : null} Compare
+                  </button>
                 </div>
               </motion.article>
             );
@@ -649,6 +813,7 @@ function ProductPage({ addToCart }) {
   }
 
   const maxQty = MAX_ORDER_QTY;
+  const spec = specFor(product.name);
 
   return (
     <div className="public-product-stage">
@@ -686,14 +851,14 @@ function ProductPage({ addToCart }) {
               className={choice?.id === item.id ? "is-active" : ""}
               onClick={() => { setChoice(item); setQuantity(1); }}
             >
-              <span><b>{item.color}</b><small>{available(item) ? "Available now" : "Sold out"}</small></span>
+              <span><b>{item.color}</b><small>{available(item) ? "In stock" : "Pre-order"}</small></span>
               <strong>{money(item.price)}</strong>
             </button>
           ))}
         </div>
 
         <div className="public-product-actions">
-          {available(choice) && (
+          {choice && (
             <div className="public-stepper">
               <button type="button" onClick={() => setQuantity((n) => Math.max(1, n - 1))} aria-label="Fewer">
                 <Minus size={13} />
@@ -708,14 +873,19 @@ function ProductPage({ addToCart }) {
           <button
             type="button"
             className={`public-primary ${added ? "is-added" : ""}`}
-            disabled={!available(choice)}
             onClick={() => { addToCart(product, choice, quantity); setAdded(true); }}
           >
             {added ? <Check size={18} /> : <ShoppingBag size={18} />}
             {" "}
-            {added ? "Added to cart" : available(choice) ? `Add ${choice?.color || "paddle"} to cart` : "This colour is sold out"}
+            {added ? "Added to cart" : available(choice) ? `Add ${choice?.color || "paddle"} to cart` : `Pre-order ${choice?.color || "this paddle"}`}
           </button>
         </div>
+        {!available(choice) && !added && (
+          <p className="public-preorder-note">
+            This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50%
+            deposit and we'll confirm your pickup or shipping date after payment.
+          </p>
+        )}
         {added && (
           <Link to="../cart" className="public-secondary-link">View cart <ArrowRight size={13} /></Link>
         )}
@@ -729,8 +899,99 @@ function ProductPage({ addToCart }) {
             <div><dt>Deposit to reserve</dt><dd>{money((choice?.price || 0) / 2)}</dd></div>
           </dl>
         </div>
+
+        {spec && (
+          <div className="public-details-card">
+            <h3>Technology</h3>
+            <dl>
+              <div><dt>Core</dt><dd>{spec.core}</dd></div>
+              <div><dt>Surface</dt><dd>{spec.surface}</dd></div>
+              <div><dt>Weight</dt><dd>{spec.weight}</dd></div>
+            </dl>
+          </div>
+        )}
       </section>
     </div>
+  );
+}
+
+/** Side-by-side compare view for whatever's in the compare tray — real fields only (price, brand, colour, stock state), never fabricated specs. */
+function ComparePage({ compareIds, toggleCompare }) {
+  const { products, status } = useShopData();
+  const selected = compareIds
+    .map((id) => products.find((product) => product.id === id))
+    .filter(Boolean);
+
+  if (status === "loading") {
+    return (
+      <main className="public-main">
+        <section className="public-state">
+          <Package size={28} />
+          <p>Loading…</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (selected.length === 0) {
+    return (
+      <main className="public-main">
+        <section className="public-state public-state-tall">
+          <Package size={30} />
+          <h2>Nothing to compare yet</h2>
+          <p>Pick two or three paddles from the shop to see them side by side.</p>
+          <Link to=".." className="public-state-link">Browse paddles</Link>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="public-main">
+      <section className="public-page-head public-page-head-compact">
+        <span className="public-kicker">COMPARE</span>
+        <h1>{selected.length} paddle{selected.length === 1 ? "" : "s"}</h1>
+      </section>
+
+      <div className="public-compare-grid">
+        {selected.map((product) => {
+          const prices = product.choices.map((choice) => choice.price);
+          const low = Math.min(...prices);
+          const high = Math.max(...prices);
+          const inStock = product.choices.some(available);
+          return (
+            <article className="public-compare-card" key={product.id}>
+              <button
+                type="button"
+                className="public-compare-remove"
+                onClick={() => toggleCompare(product.id)}
+                aria-label={`Remove ${product.name} from compare`}
+              >
+                <X size={14} />
+              </button>
+              <ProductImage product={product} choice={product.choices[0]} className="public-compare-image" />
+              <span className="public-kicker">{product.brand}</span>
+              <h2>{product.name}</h2>
+              <strong>{low === high ? money(low) : `${money(low)} – ${money(high)}`}</strong>
+              <span className={`public-inline-badge ${inStock ? "" : "is-preorder"}`}>
+                {inStock ? "In stock" : "Pre-order"}
+              </span>
+              <ul className="public-compare-colours">
+                {product.choices.map((choice) => (
+                  <li key={choice.id || choice.color}>
+                    <span>{choice.color}</span>
+                    <small>{available(choice) ? "In stock" : "Pre-order"}</small>
+                  </li>
+                ))}
+              </ul>
+              <Link to={`../paddle/${product.id}`} className="public-secondary-link">
+                View paddle <ArrowRight size={13} />
+              </Link>
+            </article>
+          );
+        })}
+      </div>
+    </main>
   );
 }
 
