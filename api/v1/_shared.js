@@ -107,7 +107,49 @@ export async function publicCatalog(db) {
   return { version: "v1", currency: "PHP", products: items };
 }
 
-export async function createOrder(db, body) {
+/**
+ * Durable replay protection for POST /api/v1/orders, backed by the
+ * `api_idempotency` table (src/lib/schema.js) — that table and its
+ * NO_ID_RETURNING entry (api/_db.js) were already scaffolded for exactly
+ * this and never wired up; this is the wiring.
+ *
+ * Claim-then-fill, not read-then-write: the INSERT ... ON CONFLICT DO
+ * NOTHING is the atomic step. Two requests racing on the same key can both
+ * reach this function, but only one can affect a row on that INSERT — the
+ * loser sees affectedRows === 0 and never runs buildOrder, so it can never
+ * produce a second order for one key. The winner fills the row with the
+ * real response after buildOrder succeeds, or deletes its own claim on a
+ * validation/availability failure so the same key can be retried once the
+ * request is fixed — only a genuine success is ever cached.
+ */
+export async function createOrder(db, body, idempotencyKey) {
+  const claim = await db.query(
+    `INSERT INTO api_idempotency (idempotency_key, endpoint) VALUES (?, 'orders') ON CONFLICT (idempotency_key) DO NOTHING`,
+    [idempotencyKey],
+  );
+  if (!claim.affectedRows) {
+    const existing = await db.query(
+      `SELECT response_json FROM api_idempotency WHERE idempotency_key = ? AND endpoint = 'orders'`,
+      [idempotencyKey],
+    );
+    const cached = existing.rows[0]?.response_json;
+    if (cached) return json(201, JSON.parse(cached));
+    // Claimed by another in-flight request (or an interrupted one that never
+    // reached a terminal state) — never fabricate a second order for this
+    // key. The client's own retry logic should back off and try again.
+    return apiError(409, "request_in_progress", "a request with this idempotency-key is already being processed");
+  }
+  const response = await buildOrder(db, body);
+  if (response.status === 201) {
+    const text = await response.clone().text();
+    await db.query(`UPDATE api_idempotency SET response_json = ? WHERE idempotency_key = ?`, [text, idempotencyKey]);
+  } else {
+    await db.query(`DELETE FROM api_idempotency WHERE idempotency_key = ?`, [idempotencyKey]);
+  }
+  return response;
+}
+
+async function buildOrder(db, body) {
   const errors = [];
   const customer = body?.customer || {};
   if (!cleanText(customer.name, 120)) errors.push("customer.name is required");

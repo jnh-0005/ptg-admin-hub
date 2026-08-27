@@ -47,7 +47,9 @@ Set server-side secrets in the function runtime, never in Vite `VITE_*` variable
 
 `PTG_API_RATE_LIMIT`: optional requests per minute per forwarded client address. Defaults are 60 for catalog and 10 for order creation.
 
-The current in-memory limiter is a basic protection for a single function instance. A production multi-instance deployment should replace it with the host's shared rate-limit primitive. The idempotency header is validated, but durable replay protection requires a small idempotency table or host-provided idempotency store before production checkout. Do not advertise checkout as production-ready until that persistence and a real transaction boundary are available.
+The current in-memory rate limiter is a basic protection for a single function instance. A production multi-instance deployment should replace it with the host's shared rate-limit primitive.
+
+The `Idempotency-Key` header is now backed by durable storage: `POST /api/v1/orders` claims the key in the `api_idempotency` table (an `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING`, so two concurrent requests for the same key can never both create an order) before touching inventory or `orders`. A repeat request for a key that already produced an order replays the cached `201` response instead of re-creating it; a repeat request for a key that's still mid-flight gets `409 request_in_progress`; a key whose request failed validation or availability has its claim released immediately, so the same key can be retried once the request is fixed. A real transaction boundary across the order-plus-line-items insert is still an open item — see the mounting checklist.
 
 ## error shape
 
@@ -65,5 +67,5 @@ Clients should handle `401`, `409`, `422`, `429`, and `503` without displaying i
 2. Pass an adapter with `query(sql, args)` and `batch(statements)` to the handlers. Do not pass the browser `folkdb` transport directly to an untrusted request.
 3. Keep the API origin separate from the admin UI origin if possible.
 4. Set the two secrets in the runtime secret manager and configure the exact storefront origin.
-5. Add durable idempotency storage and a transaction or compensating cleanup around order plus line inserts.
+5. Durable idempotency storage is done (see above). Still open: a transaction or compensating cleanup around the order-plus-line-items insert — those are currently two separate statements/transactions, so a crash between them can leave an order with no lines.
 6. Run the test suite and an external security review before deployment.

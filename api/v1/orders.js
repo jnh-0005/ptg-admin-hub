@@ -16,7 +16,7 @@ export async function POST(request, env, db) {
   if (!/^[A-Za-z0-9._-]{8,100}$/.test(idempotency)) return withHeaders(json(400, { error: { code: "idempotency_key_required", message: "a valid idempotency-key header is required" } }), headers);
   try {
     const body = await readJson(request);
-    const response = await createOrder(db, body);
+    const response = await createOrder(db, body, idempotency);
     return withHeaders(response, headers);
   } catch (error) {
     const status = error.message === "body_too_large" ? 413 : 400;

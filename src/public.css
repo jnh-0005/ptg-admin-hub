@@ -16,7 +16,12 @@
 .public-nav-links{display:flex;flex:1;gap:18px}
 .public-nav-links a{padding:6px 2px;color:#eaf3f1;font-size:12px;font-weight:700;border-bottom:2px solid transparent}
 .public-nav-links a:hover{border-color:#ffffff70}
-.public-cart-link{position:relative;display:grid;width:42px;height:42px;flex:0 0 42px;place-items:center;border-radius:50%;background:#fff;color:var(--forest)}
+/* a.public-cart-link, not the bare class — link-color specificity bug (see
+   button.public-compare-toggle note below): loses the color fight to
+   .public-shell a{color:inherit} and silently renders var(--ink) instead of
+   var(--forest). Confirmed affected; this was the worst instance since it
+   sits on a white circle against a dark nav. */
+a.public-cart-link{position:relative;display:grid;width:42px;height:42px;flex:0 0 42px;place-items:center;border-radius:50%;background:#fff;color:var(--forest)}
 .public-cart-link b{position:absolute;top:-4px;right:-4px;display:grid;min-width:19px;height:19px;place-items:center;border-radius:999px;background:var(--teal);color:#fff;font-size:10px;box-shadow:0 0 0 2px var(--forest)}
 .public-to-top{position:fixed;right:16px;bottom:16px;z-index:25;display:grid;width:44px;height:44px;place-items:center;border:0;border-radius:50%;background:var(--forest);color:#fff;box-shadow:0 10px 24px #05140f4d}
 .public-to-top:hover{background:var(--teal)}
@@ -29,7 +34,11 @@
 .public-hero-text{position:relative;padding:0 20px}
 .public-hero-text h1{margin:9px 0 10px;font-size:clamp(30px,8vw,56px);font-weight:800;letter-spacing:-.035em;line-height:1.02;color:#fff;text-shadow:0 4px 24px #05140f7a}
 .public-hero-text p{max-width:440px;margin:0 0 20px;color:#e2ede9;font-size:13px;line-height:1.6}
-.public-hero-cta{display:inline-flex;align-items:center;gap:8px;padding:0 22px;min-height:46px;border-radius:999px;background:var(--teal);color:#fff;font-size:12px;font-weight:750;box-shadow:0 10px 30px #0b777560}
+/* a.public-hero-cta, not the bare class — same link-color specificity bug
+   (see button.public-compare-toggle note below). Currently masked because
+   the reset's fallback (inherit) happens to land on the same white the
+   .public-hero ancestor already sets, but that's incidental, not a fix. */
+a.public-hero-cta{display:inline-flex;align-items:center;gap:8px;padding:0 22px;min-height:46px;border-radius:999px;background:var(--teal);color:#fff;font-size:12px;font-weight:750;box-shadow:0 10px 30px #0b777560}
 .public-hero-cta:hover{background:#0a8a87}
 .public-hero-float{position:absolute;z-index:2;top:14px;right:14px;display:flex;width:fit-content;max-width:min(58vw,220px);align-items:center;gap:10px;padding:10px 14px;border-radius:14px;background:#fff;color:var(--ink);box-shadow:0 14px 30px #05140f55}
 .public-hero-float strong{font:800 18px "JetBrains Mono Variable",monospace;color:var(--forest)}
@@ -60,7 +69,10 @@
 .public-page-head h1{margin:6px 0 6px;font-size:clamp(28px,7vw,44px);font-weight:700;letter-spacing:-.045em;line-height:1}
 .public-page-head h2{margin:6px 0 6px;font-size:clamp(20px,5vw,26px);font-weight:700;letter-spacing:-.03em;line-height:1.1}
 .public-page-head p{max-width:520px;margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.55}
-.public-back-link{display:flex;width:fit-content;align-items:center;gap:6px;margin-bottom:8px;color:var(--muted);font-size:11px;font-weight:700}
+/* a.public-back-link, not the bare class — same link-color specificity bug
+   (see button.public-compare-toggle note below): silently renders var(--ink)
+   instead of var(--muted). */
+a.public-back-link{display:flex;width:fit-content;align-items:center;gap:6px;margin-bottom:8px;color:var(--muted);font-size:11px;font-weight:700}
 .public-back-link:hover{color:var(--forest)}
 .public-live{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:9px}
 .public-live i{width:7px;height:7px;border:2px solid var(--teal);border-radius:50%;background:var(--teal)}
@@ -100,7 +112,12 @@
 .public-card-name h2{min-width:0;overflow:hidden;margin:3px 0 0;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:-.02em}
 .public-card-meta{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:9px}
 .public-card-meta strong{font:700 13px/1.2 "JetBrains Mono Variable",monospace}
-.public-quick-add{display:grid;width:34px;height:34px;flex:0 0 34px;place-items:center;border:0;border-radius:50%;background:var(--forest);color:#fff;box-shadow:0 6px 16px #123d3640}
+/* button.public-quick-add,a.public-quick-add — this class renders as both a
+   <button> (in-grid quick-add) and a <Link> (out-of-stock → PDP), so both
+   type selectors are needed. The `a` variant had the link-color specificity
+   bug: white icon text silently going var(--ink)-on-forest, i.e. nearly
+   invisible, same failure mode as .public-cart-link above. */
+button.public-quick-add,a.public-quick-add{display:grid;width:34px;height:34px;flex:0 0 34px;place-items:center;border:0;border-radius:50%;background:var(--forest);color:#fff;box-shadow:0 6px 16px #123d3640}
 .public-quick-add:hover{background:var(--teal)}
 .public-quick-add.is-added{background:var(--teal)}
 .public-quick-add:disabled{background:var(--line);color:var(--muted);box-shadow:none}
@@ -230,7 +247,10 @@ button.public-compare-clear:hover{color:#b23}
 .public-state-tall{min-height:min(60svh,440px)}
 .public-state h2{margin:12px 0 5px;font-size:18px}
 .public-state p{margin:0;color:var(--muted);font-size:11px}
-.public-state button,.public-state-link{display:inline-flex;min-height:40px;align-items:center;margin-top:16px;padding:0 16px;border:1px solid var(--forest);border-radius:999px;background:#fff;color:var(--forest);font-size:11px;font-weight:700}
+/* .public-state button is already type-qualified; a.public-state-link needs
+   the same treatment — the bare class lost the link-color specificity fight
+   (see button.public-compare-toggle note below). */
+.public-state button,a.public-state-link{display:inline-flex;min-height:40px;align-items:center;margin-top:16px;padding:0 16px;border:1px solid var(--forest);border-radius:999px;background:#fff;color:var(--forest);font-size:11px;font-weight:700}
 
 /* ── Footer ─────────────────────────────────────────────────────────── */
 .public-footer{display:grid;gap:20px;max-width:1160px;margin:0 auto;padding:28px 16px 44px;border-top:1px solid var(--line);color:var(--muted);font-size:10px}
@@ -245,7 +265,9 @@ button.public-compare-clear:hover{color:#b23}
 /* ── Product detail page: dark studio backdrop + overlaid info sheet ──── */
 .public-product-stage{display:grid}
 .public-product-backdrop{position:relative;display:grid;min-height:46svh;place-items:center;background:radial-gradient(120% 100% at 50% 0%,#1a4a41,#0a221d)}
-.public-product-back{position:absolute;top:16px;left:16px;z-index:2;display:grid;width:40px;height:40px;place-items:center;border-radius:50%;background:#ffffffe6;color:var(--forest);box-shadow:0 6px 16px #05140f40}
+/* a.public-product-back, not the bare class — same link-color specificity
+   bug (see button.public-compare-toggle note below). */
+a.public-product-back{position:absolute;top:16px;left:16px;z-index:2;display:grid;width:40px;height:40px;place-items:center;border-radius:50%;background:#ffffffe6;color:var(--forest);box-shadow:0 6px 16px #05140f40}
 .public-product-backdrop .public-product-image{width:min(72%,320px);aspect-ratio:1;border-radius:0;background:transparent}
 .public-product-backdrop .public-placeholder{background:transparent}
 .public-product-backdrop .public-placeholder img{opacity:.9;filter:brightness(0) invert(1);width:52%;max-height:44%}
@@ -287,7 +309,12 @@ button.public-compare-clear:hover{color:#b23}
 */
 button.public-primary,a.public-primary{display:flex;width:100%;min-height:48px;align-items:center;justify-content:center;gap:8px;padding:0 16px;border:0;border-radius:999px;background:linear-gradient(120deg,var(--forest),var(--teal));color:#fff;font-size:12px;font-weight:750}
 .public-primary.is-added{background:linear-gradient(120deg,var(--teal),var(--forest))}
-.public-secondary-link{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;padding:8px;color:var(--teal);font-size:11px;font-weight:700}
+/* a.public-secondary-link, not the bare class — same link-color specificity
+   bug (see button.public-compare-toggle note below): silently renders
+   var(--ink) instead of var(--teal), so the link stopped reading as a link.
+   The two descendant-selector overrides below already carry enough
+   specificity of their own and don't need this. */
+a.public-secondary-link{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;padding:8px;color:var(--teal);font-size:11px;font-weight:700}
 /* button.public-product-compare-link, not the bare class — same specificity
    note as every other button/link fix in this file: .public-shell
    button{font:inherit} would otherwise win the font-size tie. */

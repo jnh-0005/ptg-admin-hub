@@ -9,10 +9,39 @@ const BASE_ORDER_BODY = {
   payment_proof_url: "data:image/webp;base64,AA==",
 };
 
-/** Minimal fake db adapter: canned rows for the one SELECT createOrder runs, a fake insert id, and a no-op batch. */
-function fakeDb(productQuantity) {
+/**
+ * Minimal fake db adapter: canned rows for the one SELECT createOrder runs
+ * against inventory, a fake insert id, a no-op batch, and an in-memory
+ * simulation of the `api_idempotency` table so the claim/fill/release cycle
+ * in createOrder() can be exercised without a real database. `orderInserts`
+ * lets a test assert how many times the order-insert path actually ran.
+ */
+function fakeDb(productQuantity, { idempotency = new Map(), orderInserts = { count: 0 } } = {}) {
   return {
-    async query(sql) {
+    async query(sql, args = []) {
+      if (/api_idempotency/i.test(sql)) {
+        if (/^\s*INSERT/i.test(sql)) {
+          const [key] = args;
+          if (idempotency.has(key)) return { rows: [], affectedRows: 0 };
+          idempotency.set(key, null);
+          return { rows: [], affectedRows: 1 };
+        }
+        if (/^\s*SELECT/i.test(sql)) {
+          const [key] = args;
+          const cached = idempotency.get(key);
+          return { rows: cached ? [{ response_json: cached }] : [] };
+        }
+        if (/^\s*UPDATE/i.test(sql)) {
+          const [responseJson, key] = args; // matches `SET response_json = ? WHERE idempotency_key = ?`
+          idempotency.set(key, responseJson);
+          return { affectedRows: 1 };
+        }
+        if (/^\s*DELETE/i.test(sql)) {
+          const [key] = args;
+          idempotency.delete(key);
+          return { affectedRows: 1 };
+        }
+      }
       if (/^\s*SELECT/i.test(sql)) {
         return {
           rows: [
@@ -31,6 +60,7 @@ function fakeDb(productQuantity) {
           ],
         };
       }
+      orderInserts.count += 1;
       return { lastInsertId: 1 };
     },
     async batch() {
@@ -38,6 +68,8 @@ function fakeDb(productQuantity) {
     },
   };
 }
+let nextKey = 0;
+const idempotencyKey = () => `test-key-${(nextKey += 1)}`;
 
 describe("storefront api security helpers", () => {
   it("requires a long server-side bearer key", () => {
@@ -61,19 +93,61 @@ describe("storefront api security helpers", () => {
 
 describe("createOrder pre-order rule", () => {
   it("allows ordering a paddle with zero stock on hand — every paddle is a pre-order until restocked", async () => {
-    const res = await createOrder(fakeDb(0), { ...BASE_ORDER_BODY, items: [{ product_id: 1, quantity: 3 }] });
+    const res = await createOrder(fakeDb(0), { ...BASE_ORDER_BODY, items: [{ product_id: 1, quantity: 3 }] }, idempotencyKey());
     expect(res.status).toBe(201);
   });
 
   it("still caps an order against real stock once a product has some", async () => {
-    const res = await createOrder(fakeDb(2), { ...BASE_ORDER_BODY, items: [{ product_id: 1, quantity: 5 }] });
+    const res = await createOrder(fakeDb(2), { ...BASE_ORDER_BODY, items: [{ product_id: 1, quantity: 5 }] }, idempotencyKey());
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error.code).toBe("item_unavailable");
   });
 
   it("allows an order within real stock once a product has some", async () => {
-    const res = await createOrder(fakeDb(2), { ...BASE_ORDER_BODY, items: [{ product_id: 1, quantity: 2 }] });
+    const res = await createOrder(fakeDb(2), { ...BASE_ORDER_BODY, items: [{ product_id: 1, quantity: 2 }] }, idempotencyKey());
     expect(res.status).toBe(201);
+  });
+});
+
+describe("createOrder idempotency", () => {
+  it("replays the cached response instead of creating a second order for the same key", async () => {
+    const idempotency = new Map();
+    const orderInserts = { count: 0 };
+    const key = idempotencyKey();
+    const first = await createOrder(fakeDb(0, { idempotency, orderInserts }), BASE_ORDER_BODY, key);
+    expect(first.status).toBe(201);
+    const firstBody = await first.json();
+
+    const second = await createOrder(fakeDb(0, { idempotency, orderInserts }), BASE_ORDER_BODY, key);
+    expect(second.status).toBe(201);
+    const secondBody = await second.json();
+    expect(secondBody).toEqual(firstBody);
+    // Exactly one INSERT INTO orders ran across both calls — the replay never
+    // touched order creation at all.
+    expect(orderInserts.count).toBe(1);
+  });
+
+  it("rejects a second request for a key that is still in flight, without creating an order", async () => {
+    const idempotency = new Map();
+    const key = idempotencyKey();
+    idempotency.set(key, null); // simulates another request's claim, not yet filled
+    const res = await createOrder(fakeDb(0, { idempotency }), BASE_ORDER_BODY, key);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("request_in_progress");
+  });
+
+  it("releases the claim on a failed order so the same key can be retried after the request is fixed", async () => {
+    const idempotency = new Map();
+    const key = idempotencyKey();
+    const first = await createOrder(fakeDb(2, { idempotency }), { ...BASE_ORDER_BODY, items: [{ product_id: 1, quantity: 5 }] }, key);
+    expect(first.status).toBe(409); // real stock exceeded → item_unavailable, not the idempotency 409
+    const firstBody = await first.json();
+    expect(firstBody.error.code).toBe("item_unavailable");
+    expect(idempotency.has(key)).toBe(false); // claim was released, not left dangling
+
+    const retry = await createOrder(fakeDb(0, { idempotency }), { ...BASE_ORDER_BODY, items: [{ product_id: 1, quantity: 1 }] }, key);
+    expect(retry.status).toBe(201);
   });
 });
