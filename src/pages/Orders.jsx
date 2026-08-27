@@ -79,18 +79,72 @@ const RULES = {
   discount_php: { nonNegative: true },
 };
 
+/**
+ * True when a line's product/colour currently sits at zero on hand — the
+ * same rule the storefront API uses to decide "pre-order" vs "in stock"
+ * (api/v1/_shared.js's createOrder). A deleted product/variant reads as
+ * out of stock too, since there is nothing to hand over either way.
+ */
+function lineOutOfStock(item, productsById, variantsById) {
+  if (item.variant_id) {
+    const variant = variantsById.get(item.variant_id);
+    return !variant || M(variant.quantity) <= 0;
+  }
+  const product = productsById.get(item.product_id);
+  return !product || M(product.quantity_on_hand) <= 0;
+}
+
+/**
+ * "Awaiting stock" is a live read, not a snapshot of what was true when the
+ * order came in — restocking a paddle clears this on its own, no separate
+ * status to flip. Only open orders count: a Completed order already took
+ * its units out of stock (possibly down to zero itself), which says nothing
+ * about whether it's still waiting on anything.
+ */
+function orderNeedsRestock(order, items, productsById, variantsById) {
+  if (order.status === "Completed" || order.status === "Cancelled") return false;
+  return items.some((item) => lineOutOfStock(item, productsById, variantsById));
+}
+
 export default function Orders() {
-  const { orders, products, derived, commit, payments } = useStore();
+  const { orders, products, derived, commit, payments, productsById } = useStore();
   const [filter, setFilter] = useState("All");
   const [editing, setEditing] = useState(null); // "new" | order
   const [detail, setDetail] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [origin, captureOrigin] = useOrigin();
 
-  const visible = useMemo(
-    () => (filter === "All" ? orders : orders.filter((o) => o.status === filter)),
-    [orders, filter],
+  const restockNeeded = useMemo(() => {
+    const ids = new Set();
+    for (const order of orders) {
+      const items = derived.itemsByOrder.get(order.id) || [];
+      if (orderNeedsRestock(order, items, productsById, derived.variantsById)) ids.add(order.id);
+    }
+    return ids;
+  }, [orders, derived.itemsByOrder, derived.variantsById, productsById]);
+
+  const filterOptions = useMemo(
+    () => [
+      "All",
+      ...ORDER_STATUSES,
+      ...(restockNeeded.size ? [{ value: "Preorder", label: "Awaiting stock" }] : []),
+    ],
+    [restockNeeded.size],
   );
+
+  const visible = useMemo(() => {
+    const base =
+      filter === "All"
+        ? orders
+        : filter === "Preorder"
+          ? orders.filter((o) => restockNeeded.has(o.id))
+          : orders.filter((o) => o.status === filter);
+    if (filter === "Preorder") return base;
+    // Stable sort: orders waiting on a restock float to the top of whatever's
+    // visible, newest-first within each group — so which orders can't move
+    // yet is a glance, not a hunt through every card.
+    return [...base].sort((a, b) => Number(restockNeeded.has(b.id)) - Number(restockNeeded.has(a.id)));
+  }, [orders, filter, restockNeeded]);
 
   const stickyEditing = useSticky(editing);
   const stickyDetail = useSticky(detail);
@@ -150,7 +204,7 @@ export default function Orders() {
         <>
           <motion.div variants={listChild}>
             <FilterChips
-              options={["All", ...ORDER_STATUSES]}
+              options={filterOptions}
               value={filter}
               onChange={setFilter}
               idPrefix="ord"
@@ -161,7 +215,7 @@ export default function Orders() {
             {visible.length === 0 ? (
               <EmptyState
                 icon={<Receipt size={22} />}
-                title={`No ${filter.toLowerCase()} orders`}
+                title={filter === "Preorder" ? "Nothing waiting on stock" : `No ${filter.toLowerCase()} orders`}
                 body="Change the filter to see the rest."
                 action={
                   <button type="button" className="btn-quiet" onClick={() => setFilter("All")}>
@@ -175,6 +229,7 @@ export default function Orders() {
                   <OrderCard
                     key={order.id}
                     order={order}
+                    needsRestock={restockNeeded.has(order.id)}
                     math={orderMath(
                       order,
                       derived.itemsByOrder.get(order.id) || [],
@@ -282,7 +337,7 @@ function PaymentStrip({ math, className }) {
   );
 }
 
-function OrderCard({ order, math, onOpen }) {
+function OrderCard({ order, math, needsRestock, onOpen }) {
   const owing = math.balanceDue;
   return (
     <motion.div
@@ -314,9 +369,19 @@ function OrderCard({ order, math, onOpen }) {
             {math.freebieCount > 0 ? ` · ${math.freebieCount} free` : ""}
           </p>
         </div>
-        <Chip tone={TONE_FOR_STATUS[order.status] || "gray"} dot>
-          {order.status}
-        </Chip>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Chip tone={TONE_FOR_STATUS[order.status] || "gray"} dot>
+            {order.status}
+          </Chip>
+          {/* A live read of current stock, not what was true when this order
+              came in — see orderNeedsRestock above. Only ever shows on an
+              order that hasn't shipped yet. */}
+          {needsRestock && (
+            <Chip tone="clay" dot>
+              Awaiting stock
+            </Chip>
+          )}
+        </div>
       </div>
 
       <PaymentStrip math={math} className="mt-2" />
@@ -407,6 +472,7 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
 
   if (!order) return null;
   const owing = math.balanceDue;
+  const needsRestock = orderNeedsRestock(order, items, productsById, derived.variantsById);
 
   const complete = async () => {
     setCompleting(true);
@@ -502,6 +568,11 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
             <Chip tone={TONE_FOR_STATUS[order.status] || "gray"} dot>
               {order.status}
             </Chip>
+            {needsRestock && (
+              <Chip tone="clay" dot>
+                Awaiting stock — not fulfillable yet
+              </Chip>
+            )}
             {order.channel && <Chip tone="gray">{order.channel}</Chip>}
             <Chip tone="cobalt">{math.paymentRequirementLabel}</Chip>
             {/* Deposit met is its own state: the stock is reserved. */}
