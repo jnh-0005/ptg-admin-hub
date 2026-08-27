@@ -1383,6 +1383,7 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
   ].slice(0, 4);
 
   return (
+    <>
     <div className="public-product-stage">
       <div className="public-product-backdrop">
         <Link to=".." className="public-product-back" aria-label="Back to shop"><ArrowLeft size={18} /></Link>
@@ -1538,18 +1539,28 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
           ]}
         />
       </section>
-
-      {relatedProducts.length > 0 && (
-        <Reveal as="section" className="public-related">
-          <h2>You may also like</h2>
-          <div className="public-grid">
-            {relatedProducts.map((item) => (
-              <ProductCard key={item.id} product={item} addToCart={addToCart} />
-            ))}
-          </div>
-        </Reveal>
-      )}
     </div>
+
+    {/*
+      Deliberately a sibling of .public-product-stage, not nested inside
+      it — the stage's left column is a sticky image (position:sticky),
+      and it was staying pinned/visible well past where it should release,
+      overlapping this section while scrolling. A `grid-column:1/-1` span
+      on a grid item doesn't reliably bound a sticky sibling's containing
+      block the way a real DOM boundary does; being fully outside the
+      stage's grid removes the ambiguity rather than fighting it.
+    */}
+    {relatedProducts.length > 0 && (
+      <Reveal as="section" className="public-related public-related-standalone">
+        <h2>You may also like</h2>
+        <div className="public-grid">
+          {relatedProducts.map((item) => (
+            <ProductCard key={item.id} product={item} addToCart={addToCart} />
+          ))}
+        </div>
+      </Reveal>
+    )}
+    </>
   );
 }
 

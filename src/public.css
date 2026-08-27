@@ -376,7 +376,12 @@ button.public-accordion-summary{display:flex;width:100%;align-items:center;justi
 .public-faq-contact{margin-top:24px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
 .public-faq-contact a{display:inline-flex;align-items:center;gap:5px;color:var(--teal);font-weight:700}
 
-/* You may also like — reuses the same card component/classes as Shop. */
+/* You may also like — reuses the same card component/classes as Shop.
+   A standalone section now (see PublicCatalog.jsx), not a grid item inside
+   .public-product-stage, so it needs its own width/centering — matches
+   .public-product-stage's own max-width and side padding so the two line
+   up visually despite no longer sharing a grid. */
+.public-related-standalone{max-width:1280px;margin-left:auto;margin-right:auto;padding-left:max(18px,calc((100vw - 1280px)/2));padding-right:max(18px,calc((100vw - 1280px)/2))}
 .public-related{margin-top:64px;padding-top:8px;border-top:1px solid var(--line)}
 .public-related h2{margin:0 0 20px;font-size:20px;font-weight:700;letter-spacing:-.02em}
 
@@ -534,7 +539,6 @@ a.public-messenger-link:hover{background:var(--forest)}
   .public-nav-mobile-toggle,.public-mobile-drawer,.public-mobile-drawer-overlay{display:none!important}
 
   .public-product-stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start;max-width:1280px;margin:0 auto;padding:36px max(18px,calc((100vw - 1280px)/2)) 64px}
-  .public-related{grid-column:1/-1}
   .public-product-backdrop{position:sticky;top:96px;min-height:0;aspect-ratio:1;border-radius:var(--r-md)}
   .public-product-back{display:none}
   .public-product-sheet{margin-top:0;padding:0;border-radius:0;background:transparent}
