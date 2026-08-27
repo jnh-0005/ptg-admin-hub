@@ -274,7 +274,18 @@ button.public-compare-clear:hover{color:#b23}
 .public-stepper{display:flex;flex:0 0 auto;align-items:center;border:1px solid var(--line);border-radius:999px;background:#fff}
 .public-stepper button{display:grid;width:34px;height:34px;place-items:center;border:0;background:none;color:var(--forest)}
 .public-stepper span{min-width:18px;text-align:center;font:700 10px "JetBrains Mono Variable",monospace}
-.public-primary{display:flex;width:100%;min-height:48px;align-items:center;justify-content:center;gap:8px;padding:0 16px;border:0;border-radius:999px;background:linear-gradient(120deg,var(--forest),var(--teal));color:#fff;font-size:12px;font-weight:750}
+/*
+  button.public-primary,a.public-primary — not the bare class. Same
+  specificity bug as every other button/link fix in this file, this time on
+  Cart's "Continue to checkout" (a <Link>, i.e. an <a>): .public-shell
+  a{color:inherit} (0,1,1) beat .public-primary{color:#fff} (0,1,0), so the
+  button's text silently inherited dark ink instead of white — unreadable
+  against its own dark-gradient background. The ProductPage/CheckoutPage
+  <button> uses of this class were never affected (buttons don't get a
+  color reset here, only font:inherit), which is why this went unnoticed
+  until it hit an <a>.
+*/
+button.public-primary,a.public-primary{display:flex;width:100%;min-height:48px;align-items:center;justify-content:center;gap:8px;padding:0 16px;border:0;border-radius:999px;background:linear-gradient(120deg,var(--forest),var(--teal));color:#fff;font-size:12px;font-weight:750}
 .public-primary.is-added{background:linear-gradient(120deg,var(--teal),var(--forest))}
 .public-secondary-link{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;padding:8px;color:var(--teal);font-size:11px;font-weight:700}
 /* button.public-product-compare-link, not the bare class — same specificity
@@ -298,7 +309,13 @@ button.public-product-compare-link:disabled{opacity:.4}
 .public-details-card dd{margin:0;font-size:12px;font-weight:700;text-align:right}
 
 /* ── Cart page ──────────────────────────────────────────────────────── */
-.public-cart-layout{display:grid;gap:16px}
+/* align-items:start — without it, CSS Grid's default stretch makes the
+   cart-lines list match the height of the taller order-summary sidebar,
+   and since the list has no explicit row sizing, a single cart line then
+   stretches to fill that entire height too: a huge, mostly-empty box
+   around one small row. .public-checkout-layout already had this same
+   fix; this page didn't. */
+.public-cart-layout{display:grid;gap:16px;align-items:start}
 .public-cart-lines{display:grid;gap:0;margin:0;padding:0;list-style:none}
 .public-cart-line{display:grid;grid-template-columns:56px minmax(0,1fr) auto;align-items:center;gap:12px;padding:13px;border:1px solid var(--line);border-radius:13px;background:#fff}
 .public-cart-line+.public-cart-line{margin-top:9px}

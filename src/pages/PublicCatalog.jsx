@@ -489,6 +489,16 @@ function Layout({ cartCount, compareCount = 0 }) {
   // No point telling someone "N paddles selected, go compare" while they're
   // already looking at the compare page.
   const onComparePage = location.pathname.endsWith("/compare");
+
+  // React Router doesn't reset scroll position on navigation the way a real
+  // page load does. Without this, following a link from partway down a tall
+  // page (e.g. "View cart" from the bottom of a product page) lands on the
+  // new page at that same scroll offset — which on a short page like Cart
+  // can put the visitor at the order summary instead of the top of it.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
   return (
     <>
       <header className="public-nav">
