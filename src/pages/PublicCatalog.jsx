@@ -943,7 +943,7 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
           <Link to="../cart" className="public-secondary-link">View cart <ArrowRight size={13} /></Link>
         )}
 
-        <div className="public-details-card">
+        <div className="public-details-card public-details-plain">
           <h3>Details</h3>
           <dl>
             <div><dt>Brand</dt><dd>{product.brand}</dd></div>

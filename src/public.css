@@ -390,6 +390,27 @@ button.public-product-compare-link:disabled{opacity:.4}
   .public-product-thumb .public-placeholder{background:transparent}
   .public-product-thumb .public-placeholder img{width:60%;opacity:.8;filter:brightness(0) invert(1)}
   .public-product-thumb .public-placeholder span{display:none}
+
+  /*
+    Right-panel hierarchy, cleaned up: title stacked above a large price
+    (not squeezed onto one row together), the colour picker as a row of
+    compact pills instead of full-width stacked boxes, and the SKU/
+    category/deposit block as plain divided lines rather than another
+    bordered card — three boxed cards stacked on top of each other read as
+    clutter. Technology keeps its one card, since it's the only block with
+    real multi-line content worth setting apart.
+  */
+  .public-breadcrumb{margin-bottom:20px}
+  .public-product-heading{flex-direction:column;align-items:flex-start;gap:2px}
+  .public-product-heading h1{font-size:26px}
+  .public-product-price{font-size:26px;margin-top:6px}
+  .public-variants{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}
+  .public-variants>button{display:inline-flex;min-height:auto;width:auto;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 14px}
+  .public-variants strong{font-size:10px}
+  .public-product-actions{margin-top:4px}
+  button.public-product-compare-link{margin:12px 0 0}
+  .public-details-plain{border:0;padding:18px 0 0;border-top:1px solid var(--line);border-radius:0;background:transparent}
+  .public-details-plain dl>div{padding-bottom:9px}
 }
 @media(max-width:380px){
   .public-main{padding-inline:10px}
