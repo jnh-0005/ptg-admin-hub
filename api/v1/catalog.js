@@ -14,7 +14,8 @@ export async function GET(request, env, db) {
   if (limited) return withHeaders(limited, headers);
   try {
     return withHeaders(json(200, await publicCatalog(db), { "cache-control": "public, max-age=60" }), headers);
-  } catch {
+  } catch (err) {
+    console.error("catalog_unavailable:", err);
     return withHeaders(json(503, { error: { code: "catalog_unavailable", message: "catalog temporarily unavailable" } }), headers);
   }
 }
