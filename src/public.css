@@ -353,9 +353,15 @@ button.public-product-compare-link:disabled{opacity:.4}
 .public-step-head h3{margin:0;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
 .public-step-body{display:grid;gap:10px}
 .public-step-body label:not(.public-upload):not(.public-ack){display:grid;gap:5px;color:var(--muted);font-size:9px;font-weight:700}
-.public-step-body input:not([type=checkbox]):not([type=file]),.public-step-body textarea{width:100%;min-height:43px;padding:10px 11px;border:1px solid var(--line);border-radius:9px;outline:none;background:#f9fbfa;color:var(--ink);font-size:12px}
+.public-step-body input:not([type=checkbox]):not([type=file]),.public-step-body textarea,.public-step-body select{width:100%;min-height:43px;padding:10px 11px;border:1px solid var(--line);border-radius:9px;outline:none;background:#f9fbfa;color:var(--ink);font-size:12px}
 .public-step-body textarea{min-height:70px;resize:vertical}
-.public-step-body input:focus,.public-step-body textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px #0b77751c}
+.public-step-body select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2362736f' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.public-step-body select:disabled{opacity:.55}
+.public-step-body input:focus,.public-step-body textarea:focus,.public-step-body select:focus{border-color:var(--teal);box-shadow:0 0 0 3px #0b77751c}
+/* Region and ZIP each take their own full-width row; City/Municipality and
+   Barangay share a row — matches the reference's grouping. */
+.public-address-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.public-address-grid label:nth-child(1),.public-address-grid label:nth-child(4){grid-column:1/-1}
 .public-methods{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .public-methods button{display:flex;min-height:64px;align-items:center;gap:9px;padding:9px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);text-align:left}
 .public-methods button.is-active{border-color:var(--teal);background:#eff8f6}

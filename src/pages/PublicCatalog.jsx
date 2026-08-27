@@ -1229,7 +1229,12 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
     phone: "",
     fulfillment: "Pickup",
     address: "",
-    city: "",
+    regionCode: "",
+    regionName: "",
+    cityCode: "",
+    cityName: "",
+    barangay: "",
+    zip: "",
     proof: "",
     proofName: "",
     acknowledged: false,
@@ -1239,6 +1244,48 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
   const errorRef = useRef(null);
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const selectedPayment = PAYMENT_METHODS.find((method) => method.id === paymentMethod);
+
+  // The full PH region/city/barangay dataset is ~40,000 barangays — real
+  // PSGC data, not something to trim, but not something every storefront
+  // visitor should download either. Loaded on demand, only once someone
+  // actually picks Shipping, instead of shipping it in the main bundle for
+  // every page view (Pickup included).
+  const [phAddress, setPhAddress] = useState(null);
+  useEffect(() => {
+    if (form.fulfillment !== "Shipping" || phAddress) return;
+    let cancelled = false;
+    import("../lib/phAddress").then((module) => {
+      if (!cancelled) setPhAddress(module);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.fulfillment, phAddress]);
+
+  const cityOptions = useMemo(
+    () => (phAddress && form.regionCode ? phAddress.citiesInRegion(form.regionCode) : []),
+    [phAddress, form.regionCode],
+  );
+  const barangayOptions = useMemo(
+    () => (phAddress && form.cityCode ? phAddress.barangaysInCity(form.cityCode) : []),
+    [phAddress, form.cityCode],
+  );
+
+  const setRegion = (regionCode) => {
+    const region = phAddress?.PH_REGIONS.find((item) => item.reg_code === regionCode);
+    setForm((current) => ({
+      ...current,
+      regionCode,
+      regionName: region?.name || "",
+      cityCode: "",
+      cityName: "",
+      barangay: "",
+    }));
+  };
+  const setCity = (cityCode) => {
+    const city = cityOptions.find((item) => item.mun_code === cityCode);
+    setForm((current) => ({ ...current, cityCode, cityName: city?.name || "", barangay: "" }));
+  };
 
   useEffect(() => {
     if (error) errorRef.current?.focus();
@@ -1286,8 +1333,11 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
     const phone = clean(form.phone);
     if (!cart.length) return setError("Your cart is empty.");
     if (!name || !email || !phone) return setError("Add your name, email, and phone.");
-    if (form.fulfillment === "Shipping" && (!clean(form.address) || !clean(form.city))) {
-      return setError("Add your shipping address and city or region.");
+    if (
+      form.fulfillment === "Shipping" &&
+      (!clean(form.address) || !form.regionCode || !form.cityCode || !clean(form.barangay) || !clean(form.zip))
+    ) {
+      return setError("Add your complete shipping address — street, region, city, barangay, and ZIP code.");
     }
     if (!form.proof) return setError("Add your proof of payment.");
     if (!form.acknowledged) return setError("Acknowledge the order terms to continue.");
@@ -1306,7 +1356,10 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
             name,
             email,
             phone,
-            address: form.fulfillment === "Shipping" ? `${clean(form.address)}, ${clean(form.city)}` : "",
+            address:
+              form.fulfillment === "Shipping"
+                ? `${clean(form.address)}, Brgy. ${clean(form.barangay)}, ${clean(form.cityName)}, ${clean(form.regionName)} ${clean(form.zip)}`
+                : "",
           },
           fulfillment_method: form.fulfillment.toLowerCase(),
           shipping_fee_php: 0,
@@ -1359,7 +1412,39 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
               {form.fulfillment === "Shipping" && (
                 <motion.div className="public-address" initial={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} transition={spring}>
                   <label>Street address<textarea autoComplete="street-address" value={form.address} onChange={(event) => set("address", event.target.value)} required /></label>
-                  <label>City / region<input autoComplete="address-level2" value={form.city} onChange={(event) => set("city", event.target.value)} required /></label>
+                  <div className="public-address-grid">
+                    <label>
+                      Region
+                      <select value={form.regionCode} onChange={(event) => setRegion(event.target.value)} disabled={!phAddress} required>
+                        <option value="" disabled>{phAddress ? "Select region" : "Loading regions…"}</option>
+                        {phAddress?.PH_REGIONS.map((region) => (
+                          <option key={region.reg_code} value={region.reg_code}>{region.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      City / Municipality
+                      <select value={form.cityCode} onChange={(event) => setCity(event.target.value)} disabled={!form.regionCode} required>
+                        <option value="" disabled>{form.regionCode ? "Select city or municipality" : "Select region first"}</option>
+                        {cityOptions.map((city) => (
+                          <option key={city.mun_code} value={city.mun_code}>{city.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Barangay
+                      <select value={form.barangay} onChange={(event) => set("barangay", event.target.value)} disabled={!form.cityCode} required>
+                        <option value="" disabled>{form.cityCode ? "Select barangay" : "Select city first"}</option>
+                        {barangayOptions.map((barangay) => (
+                          <option key={barangay.name} value={barangay.name}>{barangay.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      ZIP code
+                      <input inputMode="numeric" autoComplete="postal-code" value={form.zip} onChange={(event) => set("zip", event.target.value)} required />
+                    </label>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
