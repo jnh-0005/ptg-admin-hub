@@ -1366,13 +1366,19 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
   // Real sibling products only — same category first, then same brand,
   // filling in up to 4, current paddle excluded. Never a fabricated
   // "recommended for you" pick.
+  // Same brand first — with almost every product sharing one category
+  // ("Paddle"), leading with category made this list read as arbitrary:
+  // brand barely mattered to the ordering. Same-brand paddles are the
+  // genuinely related pick; category is only a fallback to fill the row
+  // when a brand doesn't have enough other listings on its own.
   const relatedProducts = [
-    ...products.filter((item) => item.id !== product.id && item.category && item.category === product.category),
+    ...products.filter((item) => item.id !== product.id && item.brand === product.brand),
     ...products.filter(
       (item) =>
         item.id !== product.id &&
-        item.brand === product.brand &&
-        !(item.category && item.category === product.category),
+        item.brand !== product.brand &&
+        item.category &&
+        item.category === product.category,
     ),
   ].slice(0, 4);
 
