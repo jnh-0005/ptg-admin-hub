@@ -14,3 +14,4 @@ chrome
 .qa-*.log
 .qa-*.mjs
 .qa-*.sh
+.env*

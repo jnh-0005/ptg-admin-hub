@@ -1,12 +1,20 @@
-// Local stand-in for Vercel's serverless runtime, dev only. Mounts the exact
-// same handler api/query.js exports at /api/query, so `npm run dev` can talk
-// to the real database without needing `vercel dev` (which requires a full
-// project link and has a known hang risk on this machine — see project
-// memory). Vite's dev server proxies /api/* here (see vite.config.js).
+// Local stand-in for Vercel's serverless runtime, dev only. Mounts the same
+// handlers Vercel would route by file path, so `npm run dev` can talk to the
+// real database without needing `vercel dev` (which requires a full project
+// link and has a known hang risk on this machine — see project memory).
+// Vite's dev server proxies /api/* here (see vite.config.js).
 import http from "node:http";
-import handler from "../api/query.js";
+import queryHandler from "../api/query.js";
+import catalogHandler from "../api/v1/catalog.js";
+import ordersHandler from "../api/v1/orders.js";
 
 const PORT = process.env.DEV_API_PORT || 8788;
+
+const ROUTES = {
+  "/api/query": queryHandler,
+  "/api/v1/catalog": catalogHandler,
+  "/api/v1/orders": ordersHandler,
+};
 
 function withVercelShape(res) {
   res.status = (code) => {
@@ -22,6 +30,12 @@ function withVercelShape(res) {
 
 const server = http.createServer(async (req, res) => {
   withVercelShape(res);
+  const pathname = new URL(req.url, "http://localhost").pathname;
+  const handler = ROUTES[pathname];
+  if (!handler) {
+    res.status(404).json({ error: `no local route for ${pathname}` });
+    return;
+  }
 
   if (req.method === "POST") {
     let raw = "";
@@ -50,5 +64,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`[dev-api] /api/query available at http://localhost:${PORT}/api/query`);
+  console.log(`[dev-api] routes ready at http://localhost:${PORT}: ${Object.keys(ROUTES).join(", ")}`);
 });

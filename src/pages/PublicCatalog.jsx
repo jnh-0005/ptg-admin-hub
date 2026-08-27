@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  BrowserRouter,
+  Link,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
+  CaretRight,
   Check,
   ImageSquare,
   MagnifyingGlass,
@@ -10,47 +23,18 @@ import {
   Package,
   Plus,
   ShoppingBag,
+  Trash,
   Truck,
   X,
 } from "@phosphor-icons/react";
 
-import { batch, query } from "../lib/folkdb";
 import { spring } from "../lib/motion";
-import {
-  brandOf,
-  buildStorefrontIndex,
-  PUBLIC_CATALOG_PATH,
-  PUBLIC_SHOP_PATH,
-  resolvePhotoAssetUrl,
-  resolveStorefrontPhoto,
-} from "../lib/storefront";
+import { brandOf, PUBLIC_CATALOG_PATH, resolvePhotoAssetUrl } from "../lib/storefront";
 
-const PRODUCT_COLUMNS = [
-  "id",
-  "name",
-  "sku",
-  "quantity",
-  "sell_price",
-  "photo_url",
-  "category",
-  "notes",
-];
-const VARIANT_COLUMNS = [
-  "id",
-  "inventory_id",
-  "color",
-  "sku",
-  "quantity",
-  "selling_price_php",
-  "photo_url",
-  "active",
-];
-const PHOTO_COLUMNS = ["identity_type", "identity_key", "photo_url", "active"];
-const REQUIRED_ORDER_COLUMNS = [
-  ["fulfillment_method", "TEXT"],
-  ["payment_proof_url", "TEXT"],
-  ["acknowledgment", "TEXT"],
-];
+// A visitor never sees a real stock count (per docs/storefront-api-v1.md, the
+// public API returns only "available"/"unavailable") — this just bounds how
+// many of one colour a single order line can request.
+const MAX_ORDER_QTY = 10;
 const MAX_PROOF_CHARS = 150000;
 const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 const PROOF_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
@@ -60,6 +44,7 @@ const PAYMENT_METHODS = [
   { id: "paypal", label: "PayPal", image: "/images/payment-paytm.png" },
   { id: "instapay", label: "InstaPay", image: "/images/payment-instapay.png" },
 ];
+const CART_STORAGE_KEY = "ptg-public-cart-v2";
 
 const money = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
@@ -68,120 +53,138 @@ const money = (value) =>
   })}`;
 const available = (choice) => Number(choice?.quantity || 0) > 0;
 const clean = (value) => String(value || "").trim();
-const columnsOf = (rows = []) => new Set(rows.map((row) => String(row.name).toLowerCase()));
-const selectedColumns = (wanted, actual) => wanted.filter((column) => actual.has(column));
-const selectList = (columns) => columns.map((column) => `"${column}"`).join(", ");
 
-async function readBatch(statements) {
-  const results = [];
-  for (let index = 0; index < statements.length; index += 10) {
-    results.push(...(await batch(statements.slice(index, index + 10))));
-  }
-  return results;
-}
-
-let checkoutSchemaReady;
-
-async function ensureCheckoutSchema(orderColumns) {
-  if (!checkoutSchemaReady) {
-    checkoutSchemaReady = (async () => {
-      const known = new Set(orderColumns);
-      for (const [column, type] of REQUIRED_ORDER_COLUMNS) {
-        if (known.has(column)) continue;
-        await query(`ALTER TABLE orders ADD COLUMN ${column} ${type}`);
-        known.add(column);
-      }
-      return known;
-    })().catch((error) => {
-      checkoutSchemaReady = null;
-      throw error;
-    });
-  }
-  return checkoutSchemaReady;
-}
-
-/** Public-safe catalog read. Costs, batches, orders and stock depth never cross this boundary. */
+/**
+ * Public-safe catalog read, via the dedicated storefront API (api/v1/catalog.js)
+ * rather than the admin's authenticated /api/query — this route has no login
+ * wall, so it must never touch the transport that requires one. The API
+ * itself already strips costs, batches, and real stock counts; this just
+ * reshapes its response into what the storefront UI expects. This is the
+ * live sync point with the admin hub: the same inventory rows, prices, and
+ * availability the admin sees drive this response, and nothing here caches
+ * or forks that data — every load (and the 30s background refresh) re-reads it.
+ */
 export async function loadCatalog() {
-  const tableInfo = await readBatch([
-    { sql: "PRAGMA table_info(inventory)" },
-    { sql: "PRAGMA table_info(inventory_variants)" },
-    { sql: "PRAGMA table_info(storefront_photos)" },
-    { sql: "PRAGMA table_info(orders)" },
-    { sql: "PRAGMA table_info(order_items)" },
-  ]);
-  const productColumns = selectedColumns(PRODUCT_COLUMNS, columnsOf(tableInfo[0]?.rows));
-  const variantColumns = selectedColumns(VARIANT_COLUMNS, columnsOf(tableInfo[1]?.rows));
-  const photoColumns = selectedColumns(PHOTO_COLUMNS, columnsOf(tableInfo[2]?.rows));
-
-  if (!productColumns.includes("id") || !productColumns.includes("name")) {
-    return { products: [], orderColumns: columnsOf(tableInfo[3]?.rows), itemColumns: columnsOf(tableInfo[4]?.rows) };
-  }
-
-  const reads = [
-    { sql: `SELECT ${selectList(productColumns)} FROM inventory ORDER BY name COLLATE NOCASE` },
-    variantColumns.includes("inventory_id")
-      ? { sql: `SELECT ${selectList(variantColumns)} FROM inventory_variants ORDER BY color COLLATE NOCASE` }
-      : { sql: "SELECT NULL WHERE 0" },
-    photoColumns.includes("identity_key")
-      ? { sql: `SELECT ${selectList(photoColumns)} FROM storefront_photos WHERE active = 1` }
-      : { sql: "SELECT NULL WHERE 0" },
-  ];
-  const [productResult, variantResult, photoResult] = await readBatch(reads);
-  const photoIndex = buildStorefrontIndex(photoResult?.rows || []);
-  const variants = (variantResult?.rows || []).filter((variant) => Number(variant.active ?? 1) === 1);
-  const products = (productResult?.rows || [])
-    .filter(
-      (product) =>
-        product.category !== "Add-on" &&
-        !String(product.notes || "").startsWith("[archived]"),
-    )
-    .map((product) => {
-      const brand = brandOf(product.name);
-      const productVariants = variants.filter((variant) => variant.inventory_id === product.id);
-      const choices = productVariants.length
-        ? productVariants.map((variant) => ({
-            id: variant.id,
-            color: clean(variant.color) || "Standard",
-            sku: clean(variant.sku) || clean(product.sku),
-            quantity: variant.quantity,
-            price:
-              Number(variant.selling_price_php) > 0
-                ? Number(variant.selling_price_php)
-                : Number(product.sell_price || 0),
-            photo:
-              resolveStorefrontPhoto(photoIndex, {
-                name: product.name,
-                color: variant.color,
-                brand,
-                fallback: variant.photo_url || product.photo_url,
-              })?.url || null,
-          }))
-        : [
-            {
-              id: null,
-              color: "Standard",
-              sku: clean(product.sku),
-              quantity: product.quantity,
-              price: Number(product.sell_price || 0),
-              photo:
-                resolveStorefrontPhoto(photoIndex, {
-                  name: product.name,
-                  brand,
-                  fallback: product.photo_url,
-                })?.url || resolvePhotoAssetUrl(product.photo_url),
-            },
-          ];
-      return { id: product.id, name: product.name, brand, choices };
-    });
-
-  return {
-    products,
-    orderColumns: columnsOf(tableInfo[3]?.rows),
-    itemColumns: columnsOf(tableInfo[4]?.rows),
-  };
+  const res = await fetch("/api/v1/catalog");
+  if (!res.ok) throw new Error("catalog unavailable");
+  const data = await res.json();
+  const products = (data.products || []).map((product) => {
+    const brand = brandOf(product.name);
+    const baseChoice = {
+      id: null,
+      color: "Standard",
+      sku: product.sku,
+      quantity: product.availability === "available" ? MAX_ORDER_QTY : 0,
+      price: product.price_php,
+      photo: resolvePhotoAssetUrl(product.photo_url),
+    };
+    const choices = (product.variants || []).length
+      ? product.variants.map((variant) => ({
+          id: variant.id,
+          color: clean(variant.color) || "Standard",
+          sku: variant.sku || product.sku,
+          quantity: variant.availability === "available" ? MAX_ORDER_QTY : 0,
+          price: variant.price_php,
+          photo: resolvePhotoAssetUrl(variant.photo_url),
+        }))
+      : [baseChoice];
+    return {
+      id: product.id,
+      name: product.name,
+      brand,
+      category: product.category || null,
+      sku: product.sku || null,
+      choices,
+    };
+  });
+  return { products };
 }
 
-function ProductImage({ product, choice, layout = false, className = "" }) {
+function readStoredCart() {
+  try {
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fades + slides an element up into place the first time it scrolls into
+ * view, then leaves it alone — the storefront's only scroll choreography.
+ * `once: true` means every section settles permanently after its first
+ * reveal, so scrolling back up never re-triggers or flickers content.
+ */
+function Reveal({ as: Tag = "div", delay = 0, className, children, ...rest }) {
+  const reduce = useReducedMotion();
+  const Component = motion[Tag] || motion.div;
+  if (reduce) {
+    const Plain = Tag;
+    return (
+      <Plain className={className} {...rest}>
+        {children}
+      </Plain>
+    );
+  }
+  return (
+    <Component
+      className={className}
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ duration: 0.7, delay, ease: [0.25, 1, 0.5, 1] }}
+      {...rest}
+    >
+      {children}
+    </Component>
+  );
+}
+
+// Real logo marks, background-removed from the brand's own supplied artwork.
+// A brand with no file here (e.g. one newly added to inventory) falls back
+// to its plain name in the marquee rather than a fabricated or guessed mark.
+const BRAND_LOGOS = {
+  Sypik: "/images/brands/sypik.png",
+  RPM: "/images/brands/rpm.png",
+  Joola: "/images/brands/joola.png",
+  Selkirk: "/images/brands/selkirk.png",
+  Wika: "/images/brands/wika.png",
+  Kamito: "/images/brands/kamito.png",
+  Honolulu: "/images/brands/honolulu.png",
+  Franklin: "/images/brands/franklin.png",
+  Zocker: "/images/brands/zocker.png",
+};
+
+/**
+ * Continuous auto-scrolling brand row — real brand names pulled from the
+ * live catalog (never a hardcoded or fabricated list), shown as each
+ * brand's own logo where we have real artwork for it, or its plain name
+ * otherwise. Duplicated once for a seamless loop; pauses on hover/focus so
+ * it never becomes unreadable to someone who wants to stop and look, and
+ * respects prefers-reduced-motion by holding still.
+ */
+function LogoMarquee({ items }) {
+  const reduce = useReducedMotion();
+  if (!items.length) return null;
+  const track = [...items, ...items];
+  return (
+    <div className="public-marquee" role="list" aria-label="Brands available">
+      <div className={`public-marquee-track ${reduce ? "is-static" : ""}`}>
+        {track.map((name, index) => {
+          const logo = BRAND_LOGOS[name];
+          return (
+            <span className="public-marquee-item" role="listitem" key={`${name}-${index}`} aria-hidden={index >= items.length}>
+              {logo ? <img src={logo} alt={name} /> : name}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProductImage({ product, choice, className = "" }) {
   const [failed, setFailed] = useState(false);
   const src = resolvePhotoAssetUrl(choice?.photo);
   useEffect(() => setFailed(false), [src]);
@@ -193,28 +196,15 @@ function ProductImage({ product, choice, layout = false, className = "" }) {
       <span>Photo coming soon</span>
     </div>
   );
-  return layout ? (
-    <motion.div layoutId={`public-product-${product.id}`} className={className} transition={spring}>
-      {image}
-    </motion.div>
-  ) : (
-    <div className={className}>{image}</div>
-  );
+  return <div className={className}>{image}</div>;
 }
 
 export default function PublicCatalog() {
   const reduce = useReducedMotion();
   const [products, setProducts] = useState([]);
-  const [schema, setSchema] = useState({ orderColumns: new Set(), itemColumns: new Set() });
   const [status, setStatus] = useState("loading");
   const [reconnecting, setReconnecting] = useState(false);
-  const [search, setSearch] = useState("");
-  const [brand, setBrand] = useState("All brands");
-  const [selected, setSelected] = useState(null);
-  const [selectedChoice, setSelectedChoice] = useState(null);
-  const [cart, setCart] = useState([]);
-  const [panel, setPanel] = useState(null);
-  const [sent, setSent] = useState(null);
+  const [cart, setCart] = useState(() => readStoredCart());
   const hasCatalog = useRef(false);
 
   const refresh = async (background = false) => {
@@ -222,7 +212,6 @@ export default function PublicCatalog() {
     try {
       const result = await loadCatalog();
       setProducts(result.products);
-      setSchema({ orderColumns: result.orderColumns, itemColumns: result.itemColumns });
       setStatus("ready");
       setReconnecting(false);
       hasCatalog.current = true;
@@ -238,41 +227,28 @@ export default function PublicCatalog() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const brands = useMemo(
-    () => ["All brands", ...Array.from(new Set(products.map((product) => product.brand))).sort()],
-    [products],
-  );
   useEffect(() => {
-    if (!brands.includes(brand)) setBrand("All brands");
-  }, [brand, brands]);
+    try {
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    } catch {
+      /* a full or blocked storage jar just means the cart won't survive a reload */
+    }
+  }, [cart]);
 
-  const filtered = products.filter((product) => {
-    const needle = search.trim().toLowerCase();
-    return (
-      (brand === "All brands" || product.brand === brand) &&
-      (!needle || `${product.brand} ${product.name}`.toLowerCase().includes(needle))
-    );
-  });
-  const availableChoices = products.reduce(
-    (total, product) => total + product.choices.filter(available).length,
-    0,
-  );
   const cartCount = cart.reduce((total, line) => total + line.quantity, 0);
   const cartTotal = cart.reduce((total, line) => total + line.price * line.quantity, 0);
 
-  const openProduct = (product) => {
-    setSelected(product);
-    setSelectedChoice(product.choices.find(available) || product.choices[0]);
-  };
-  const addToCart = () => {
-    if (!selected || !available(selectedChoice)) return;
-    const key = `${selected.id}:${selectedChoice.id || "base"}`;
+  /** Adds `quantity` of one product+colour to the cart, merging with any existing line. */
+  const addToCart = (product, choice, quantity = 1) => {
+    if (!product || !available(choice)) return;
+    const key = `${product.id}:${choice.id || "base"}`;
     setCart((current) => {
       const existing = current.find((line) => line.key === key);
+      const max = MAX_ORDER_QTY;
       if (existing) {
         return current.map((line) =>
           line.key === key
-            ? { ...line, quantity: Math.min(line.max, line.quantity + 1) }
+            ? { ...line, quantity: Math.min(max, line.quantity + quantity) }
             : line,
         );
       }
@@ -280,20 +256,18 @@ export default function PublicCatalog() {
         ...current,
         {
           key,
-          productId: selected.id,
-          variantId: selectedChoice.id,
-          name: selected.name,
-          color: selectedChoice.color,
-          sku: selectedChoice.sku,
-          price: selectedChoice.price,
-          photo: selectedChoice.photo,
-          max: Number(selectedChoice.quantity || 0),
-          quantity: 1,
+          productId: product.id,
+          variantId: choice.id,
+          name: product.name,
+          color: choice.color,
+          sku: choice.sku,
+          price: choice.price,
+          photo: choice.photo,
+          max,
+          quantity: Math.min(max, quantity),
         },
       ];
     });
-    setSelected(null);
-    setPanel("cart");
   };
   const updateQuantity = (key, delta) => {
     setCart((current) =>
@@ -306,275 +280,541 @@ export default function PublicCatalog() {
         .filter((line) => line.quantity > 0),
     );
   };
+  const removeLine = (key) => setCart((current) => current.filter((line) => line.key !== key));
 
   return (
-    <div className="public-shell">
-      <header className="public-header">
-        <a href={PUBLIC_CATALOG_PATH} aria-label="Paddle To Go storefront">
+    <BrowserRouter basename={PUBLIC_CATALOG_PATH}>
+      <div className="public-shell">
+        <Routes>
+          <Route element={<Layout cartCount={cartCount} />}>
+            <Route index element={<Shop addToCart={addToCart} />} />
+            <Route path="paddle/:id" element={<ProductPage addToCart={addToCart} />} />
+            <Route
+              path="cart"
+              element={<CartPage cart={cart} total={cartTotal} onQuantity={updateQuantity} onRemove={removeLine} reduce={reduce} />}
+            />
+            <Route
+              path="checkout"
+              element={<CheckoutPage cart={cart} total={cartTotal} onSent={() => setCart([])} reduce={reduce} />}
+            />
+            <Route path="order/:orderNumber" element={<OrderConfirmation />} />
+            <Route path="*" element={<Navigate to="" replace />} />
+          </Route>
+        </Routes>
+      </div>
+    </BrowserRouter>
+  );
+}
+
+/** Appears once the visitor has scrolled a screen's worth down; scrolls smoothly back to the top. */
+function BackToTop() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 640);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.button
+          type="button"
+          className="public-to-top"
+          aria-label="Back to top"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          transition={spring}
+        >
+          <ArrowUp size={18} />
+        </motion.button>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Header + footer chrome shared by every storefront route; the routed page fills the middle. */
+function Layout({ cartCount }) {
+  return (
+    <>
+      <header className="public-nav">
+        <Link to="" className="public-nav-brand" aria-label="Paddle To Go storefront">
           <img src="/images/ptg-logo-inverse.png" alt="Paddle To Go" className="public-logo" />
-        </a>
-        <button type="button" className="public-cart-button" onClick={() => setPanel("cart")}>
-          <ShoppingBag size={18} />
-          <span>Cart</span>
+        </Link>
+        <nav className="public-nav-links" aria-label="Storefront">
+          <Link to="">Shop</Link>
+        </nav>
+        <Link to="cart" className="public-cart-link" aria-label={`Cart, ${cartCount} item${cartCount === 1 ? "" : "s"}`}>
+          <ShoppingBag size={19} />
           {cartCount > 0 && <b>{cartCount}</b>}
-        </button>
+        </Link>
       </header>
 
-      <main className="public-main">
-        <section className="public-hero">
-          <div>
-            <span className="public-kicker">CURRENT LINE-UP</span>
-            <h1>Your next paddle is ready.</h1>
-            <p>Choose your model and colour, then reserve it with a 50% deposit.</p>
-            <a href={PUBLIC_SHOP_PATH} onClick={(event) => { if (window.location.pathname === PUBLIC_CATALOG_PATH || window.location.pathname === `${PUBLIC_CATALOG_PATH}/`) { event.preventDefault(); window.history.replaceState(null, "", PUBLIC_SHOP_PATH); document.getElementById("shop")?.scrollIntoView({ behavior: "smooth" }); } }}>Shop paddles <ArrowRight size={16} /></a>
-          </div>
-          <div className="public-hero-stat" aria-label={`${availableChoices} choices available`}>
-            <strong>{availableChoices}</strong>
-            <span>choices ready</span>
-          </div>
-        </section>
-
-        <section className="public-browse" id="shop">
-          <div className="public-browse-head">
-            <div>
-              <span className="public-kicker">SHOP</span>
-              <h2>Find your paddle</h2>
-            </div>
-            <span className={`public-live ${reconnecting ? "is-offline" : ""}`}>
-              <i /> {reconnecting ? "Reconnecting" : "Live availability"}
-            </span>
-          </div>
-          <label className="public-search">
-            <MagnifyingGlass size={18} />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search model or brand"
-              aria-label="Search model or brand"
-            />
-          </label>
-          <div className="public-brand-row" aria-label="Filter by brand">
-            {brands.map((item) => (
-              <button
-                type="button"
-                key={item}
-                className={brand === item ? "is-active" : ""}
-                onClick={() => setBrand(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {status === "loading" && <CatalogSkeleton />}
-        {status === "error" && (
-          <section className="public-state">
-            <Package size={28} />
-            <h2>The shop did not load</h2>
-            <p>Please check your connection and try again.</p>
-            <button type="button" onClick={() => { setStatus("loading"); refresh(); }}>Try again</button>
-          </section>
-        )}
-        {status === "ready" && filtered.length > 0 && (
-          <motion.section className="public-grid" layout>
-            {filtered.map((product) => {
-              const inStock = product.choices.some(available);
-              const fromPrice = Math.min(...product.choices.map((choice) => choice.price));
-              return (
-                <motion.article className="public-card" key={product.id} layout>
-                  <button type="button" onClick={() => openProduct(product)} aria-label={`View ${product.name}`}>
-                    <ProductImage product={product} choice={product.choices[0]} layout className="public-card-image" />
-                    <div className="public-card-body">
-                      <div className="public-card-name"><span>{product.brand}</span><h2>{product.name}</h2></div>
-                      <div className="public-card-meta">
-                        <strong>{money(fromPrice)}</strong>
-                        <em className={inStock ? "is-in" : "is-out"}>{inStock ? "In stock" : "Sold out"}</em>
-                      </div>
-                      <span className="public-view">Choose a colour <ArrowRight size={13} /></span>
-                    </div>
-                  </button>
-                </motion.article>
-              );
-            })}
-          </motion.section>
-        )}
-        {status === "ready" && filtered.length === 0 && (
-          <section className="public-state">
-            <MagnifyingGlass size={28} />
-            <h2>No matching paddles</h2>
-            <p>Try another model or clear the brand filter.</p>
-            <button type="button" onClick={() => { setSearch(""); setBrand("All brands"); }}>Show all paddles</button>
-          </section>
-        )}
-      </main>
+      <Outlet context={{}} />
 
       <footer className="public-footer">
-        <img src="/images/ptg-logo-header.png" alt="Paddle To Go" />
-        <span>Live price and availability. No stock counts shown.</span>
+        <div className="public-footer-brand">
+          <img src="/images/ptg-logo-header.png" alt="Paddle To Go" />
+          <p>Your paddles, reserved direct from the source.</p>
+        </div>
+        <div className="public-footer-col">
+          <h3>Shop</h3>
+          <Link to="">All paddles</Link>
+          <Link to="cart">Cart</Link>
+        </div>
+        <div className="public-footer-note">
+          <span>Live price and availability. No stock counts shown.</span>
+        </div>
       </footer>
 
-      <AnimatePresence>
-        {selected && (
-          <ProductDetail
-            product={selected}
-            choice={selectedChoice}
-            onChoice={setSelectedChoice}
-            onClose={() => setSelected(null)}
-            onAdd={addToCart}
-            reduce={reduce}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {panel && (
-          <CartFlow
-            key="cart-flow"
-            phase={panel}
-            cart={cart}
-            total={cartTotal}
-            schema={schema}
-            onPhase={setPanel}
-            onClose={() => setPanel(null)}
-            onQuantity={updateQuantity}
-            onSent={(order) => {
-              setPanel(null);
-              setCart([]);
-              setSent(order);
-            }}
-            reduce={reduce}
-          />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {sent && <Success order={sent} onClose={() => setSent(null)} reduce={reduce} />}
-      </AnimatePresence>
-    </div>
+      <BackToTop />
+    </>
   );
 }
 
-function Overlay({ children, onClose, className, reduce }) {
-  const dialogRef = useRef(null);
-  const returnFocus = useRef(document.activeElement);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+function useShopData() {
+  const [products, setProducts] = useState([]);
+  const [status, setStatus] = useState("loading");
+  const [reconnecting, setReconnecting] = useState(false);
+  const hasCatalog = useRef(false);
+
+  const refresh = async (background = false) => {
+    if (background) setReconnecting(false);
+    try {
+      const result = await loadCatalog();
+      setProducts(result.products);
+      setStatus("ready");
+      setReconnecting(false);
+      hasCatalog.current = true;
+    } catch {
+      if (background && hasCatalog.current) setReconnecting(true);
+      else setStatus("error");
+    }
+  };
 
   useEffect(() => {
-    const dialog = dialogRef.current;
-    const priorOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    dialog?.focus();
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") return onCloseRef.current();
-      if (event.key !== "Tab" || !dialog) return;
-      const focusable = Array.from(
-        dialog.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'),
-      );
-      if (!focusable.length) return event.preventDefault();
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = priorOverflow;
-      returnFocus.current?.focus?.();
-    };
+    refresh();
+    const timer = window.setInterval(() => refresh(true), 30000);
+    return () => window.clearInterval(timer);
   }, []);
 
+  return { products, status, reconnecting, refresh };
+}
+
+function Shop({ addToCart }) {
+  const { products, status, reconnecting, refresh } = useShopData();
+  const [justAdded, setJustAdded] = useState(null);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
+  const [brand, setBrand] = useState("All brands");
+  const [sort, setSort] = useState("featured");
+
+  const categories = useMemo(
+    () => ["All", ...Array.from(new Set(products.map((product) => product.category).filter(Boolean))).sort()],
+    [products],
+  );
+  const brands = useMemo(
+    () => ["All brands", ...Array.from(new Set(products.map((product) => product.brand))).sort()],
+    [products],
+  );
+  useEffect(() => {
+    if (!categories.includes(category)) setCategory("All");
+  }, [category, categories]);
+  useEffect(() => {
+    if (!brands.includes(brand)) setBrand("All brands");
+  }, [brand, brands]);
+
+  const filtered = products
+    .filter((product) => {
+      const needle = search.trim().toLowerCase();
+      return (
+        (category === "All" || product.category === category) &&
+        (brand === "All brands" || product.brand === brand) &&
+        (!needle || `${product.brand} ${product.name}`.toLowerCase().includes(needle))
+      );
+    })
+    .slice()
+    .sort((a, b) => {
+      const priceOf = (product) => Math.min(...product.choices.map((choice) => choice.price));
+      if (sort === "price-asc") return priceOf(a) - priceOf(b);
+      if (sort === "price-desc") return priceOf(b) - priceOf(a);
+      return 0;
+    });
+
+  const availableCount = products.reduce((total, product) => total + product.choices.filter(available).length, 0);
+
   return (
-    <motion.div className="public-modal" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <button type="button" className="public-scrim" onClick={onClose} aria-label="Close" />
-      <motion.section
-        ref={dialogRef}
-        className={className}
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={reduce ? { opacity: 0 } : { opacity: 0, y: 28, scale: 0.98 }}
-        transition={spring}
-        role="dialog"
-        aria-modal="true"
-        tabIndex="-1"
-      >
-        {children}
-      </motion.section>
-    </motion.div>
+    <>
+      <section className="public-hero">
+        <img className="public-hero-bg" src="/images/ptg-court-banner-v2.png" alt="Paddle To Go — Cagayan de Oro, Philippines" />
+        <div className="public-hero-scrim" />
+        <Reveal className="public-hero-float" delay={0.1}>
+          <strong>{products.length || "—"}</strong>
+          <span>{availableCount > 0 ? `models · ${availableCount} colours in stock` : "models in the current lineup"}</span>
+        </Reveal>
+        <Reveal as="div" className="public-hero-text">
+          <span className="public-kicker public-kicker-on-dark">CURRENT LINE-UP</span>
+          <h1>Reserve your next paddle.</h1>
+          <p>Pick your model and colour, then hold it with a 50% deposit — no account, no waiting on a reply.</p>
+          <a
+            href="#shop"
+            className="public-hero-cta"
+            onClick={(event) => {
+              event.preventDefault();
+              document.getElementById("shop")?.scrollIntoView({ behavior: "smooth" });
+            }}
+          >
+            Shop paddles <ArrowRight size={16} />
+          </a>
+        </Reveal>
+      </section>
+
+      <section className="public-feature">
+        <LogoMarquee items={brands.filter((item) => item !== "All brands")} />
+      </section>
+
+      <main className="public-main" id="shop">
+      <Reveal as="section" className="public-page-head public-page-head-compact">
+        <span className="public-kicker">SHOP</span>
+        <h2>Find your paddle</h2>
+        <span className={`public-live ${reconnecting ? "is-offline" : ""}`}>
+          <i /> {reconnecting ? "Reconnecting" : "Live price and availability"}
+        </span>
+      </Reveal>
+
+      {categories.length > 2 && (
+        <section className="public-category-row" aria-label="Filter by category">
+          {categories.map((item) => (
+            <button type="button" key={item} className={category === item ? "is-active" : ""} onClick={() => setCategory(item)}>
+              {item}
+            </button>
+          ))}
+        </section>
+      )}
+
+      <section className="public-filter-bar">
+        <label className="public-search">
+          <MagnifyingGlass size={17} />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search model or brand"
+            aria-label="Search model or brand"
+          />
+        </label>
+        <div className="public-brand-row" aria-label="Filter by brand">
+          {brands.map((item) => (
+            <button type="button" key={item} className={brand === item ? "is-active" : ""} onClick={() => setBrand(item)}>
+              {item}
+            </button>
+          ))}
+        </div>
+        <label className="public-sort">
+          <span>Sort</span>
+          <select value={sort} onChange={(event) => setSort(event.target.value)}>
+            <option value="featured">Featured</option>
+            <option value="price-asc">Price: low to high</option>
+            <option value="price-desc">Price: high to low</option>
+          </select>
+        </label>
+      </section>
+
+      {status === "loading" && <CatalogSkeleton />}
+      {status === "error" && (
+        <section className="public-state">
+          <Package size={28} />
+          <h2>The shop did not load</h2>
+          <p>Please check your connection and try again.</p>
+          <button type="button" onClick={() => refresh()}>Try again</button>
+        </section>
+      )}
+      {status === "ready" && filtered.length > 0 && (
+        <motion.section className="public-grid" layout>
+          {filtered.map((product, index) => {
+            const inStock = product.choices.some(available);
+            const fromPrice = Math.min(...product.choices.map((choice) => choice.price));
+            const singleChoice = product.choices.length === 1 ? product.choices[0] : null;
+            const justAddedThis = justAdded === product.id;
+            return (
+              <motion.article
+                className="public-card"
+                key={product.id}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.5, delay: (index % 4) * 0.06, ease: [0.25, 1, 0.5, 1] }}
+              >
+                <Link to={`paddle/${product.id}`} aria-label={`View ${product.name}`}>
+                  <ProductImage product={product} choice={product.choices[0]} className="public-card-image" />
+                  {!inStock && <span className="public-card-badge">Sold out</span>}
+                </Link>
+                <div className="public-card-body">
+                  <Link to={`paddle/${product.id}`}>
+                    <div className="public-card-name"><span>{product.brand}</span><h2>{product.name}</h2></div>
+                  </Link>
+                  <div className="public-card-meta">
+                    <strong>{money(fromPrice)}</strong>
+                    {singleChoice ? (
+                      <button
+                        type="button"
+                        className={`public-quick-add ${justAddedThis ? "is-added" : ""}`}
+                        disabled={!available(singleChoice)}
+                        aria-label={available(singleChoice) ? `Add ${product.name} to cart` : `${product.name} is sold out`}
+                        onClick={() => {
+                          if (!available(singleChoice)) return;
+                          addToCart(product, singleChoice, 1);
+                          setJustAdded(product.id);
+                          window.setTimeout(() => setJustAdded((current) => (current === product.id ? null : current)), 1600);
+                        }}
+                      >
+                        {justAddedThis ? <Check size={15} /> : <Plus size={15} />}
+                      </button>
+                    ) : (
+                      <Link to={`paddle/${product.id}`} className="public-quick-add" aria-label={`Choose a colour for ${product.name}`}>
+                        <Plus size={15} />
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </motion.article>
+            );
+          })}
+        </motion.section>
+      )}
+      {status === "ready" && filtered.length === 0 && (
+        <section className="public-state">
+          <MagnifyingGlass size={28} />
+          <h2>No matching paddles</h2>
+          <p>Try another model or clear your filters.</p>
+          <button type="button" onClick={() => { setSearch(""); setBrand("All brands"); setCategory("All"); }}>Show all paddles</button>
+        </section>
+      )}
+      </main>
+    </>
   );
 }
 
-function ProductDetail({ product, choice, onChoice, onClose, onAdd, reduce }) {
+/** A real, linkable page per paddle: breadcrumb, hero image, colour picker, honest specifics. */
+function ProductPage({ addToCart }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { products, status } = useShopData();
+  const product = products.find((item) => String(item.id) === id);
+  const [choice, setChoice] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [added, setAdded] = useState(false);
+
+  useEffect(() => {
+    if (!product) return;
+    setChoice(product.choices.find(available) || product.choices[0]);
+    setQuantity(1);
+  }, [product?.id]);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
+
+  useEffect(() => {
+    if (!added) return;
+    const timer = window.setTimeout(() => setAdded(false), 2200);
+    return () => window.clearTimeout(timer);
+  }, [added]);
+
+  if (status === "loading") {
+    return (
+      <main className="public-main">
+        <section className="public-state">
+          <Package size={28} />
+          <p>Loading…</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!product) {
+    return (
+      <main className="public-main">
+        <section className="public-state">
+          <Package size={28} />
+          <h2>That paddle isn't here anymore</h2>
+          <p>It may have sold out or been renamed.</p>
+          <button type="button" onClick={() => navigate("..")}>Back to shop</button>
+        </section>
+      </main>
+    );
+  }
+
+  const maxQty = MAX_ORDER_QTY;
+
   return (
-    <Overlay onClose={onClose} className="public-sheet public-detail-sheet" reduce={reduce}>
-      <button type="button" className="public-close" onClick={onClose} aria-label="Close product details"><X size={20} /></button>
-      <ProductImage product={product} choice={choice} layout className="public-detail-image" />
-      <div className="public-detail">
-        <span className="public-kicker">{product.brand}</span>
-        <h2>{product.name}</h2>
-        <p>Choose the colour you want to reserve.</p>
+    <div className="public-product-stage">
+      <div className="public-product-backdrop">
+        <Link to=".." className="public-product-back" aria-label="Back to shop"><ArrowLeft size={18} /></Link>
+        <ProductImage product={product} choice={choice} className="public-product-image" />
+      </div>
+
+      <section className="public-product-sheet">
+        <nav className="public-breadcrumb" aria-label="Breadcrumb">
+          <Link to="..">Shop</Link>
+          {product.category && (
+            <>
+              <CaretRight size={11} />
+              <span>{product.category}</span>
+            </>
+          )}
+          <CaretRight size={11} />
+          <span>{product.name}</span>
+        </nav>
+
+        <div className="public-product-heading">
+          <div>
+            <span className="public-kicker">{product.brand}</span>
+            <h1>{product.name}</h1>
+          </div>
+          <strong className="public-product-price">{money(choice?.price || 0)}</strong>
+        </div>
+
         <div className="public-variants">
           {product.choices.map((item) => (
             <button
               type="button"
               key={item.id || item.color}
               className={choice?.id === item.id ? "is-active" : ""}
-              onClick={() => onChoice(item)}
+              onClick={() => { setChoice(item); setQuantity(1); }}
             >
               <span><b>{item.color}</b><small>{available(item) ? "Available now" : "Sold out"}</small></span>
               <strong>{money(item.price)}</strong>
             </button>
           ))}
         </div>
-        <button type="button" className="public-primary" disabled={!available(choice)} onClick={onAdd}>
-          <ShoppingBag size={18} /> {available(choice) ? `Add ${choice?.color || "paddle"} to cart` : "This colour is sold out"}
-        </button>
-      </div>
-    </Overlay>
-  );
-}
 
-function CartFlow({ phase, cart, total, schema, onPhase, onClose, onQuantity, onSent, reduce }) {
-  return (
-    <Overlay onClose={onClose} className={`public-sheet public-cart-sheet is-${phase}`} reduce={reduce}>
-      <AnimatePresence mode="popLayout" initial={false} custom={phase === "checkout" ? 1 : -1}>
-        {phase === "cart" ? (
-          <motion.div key="cart" className="public-flow" initial={reduce ? { opacity: 0 } : { opacity: 0, x: -18 }} animate={{ opacity: 1, x: 0 }} exit={reduce ? { opacity: 0 } : { opacity: 0, x: -18 }} transition={spring}>
-            <div className="public-sheet-head"><button type="button" onClick={onClose} aria-label="Close cart"><X size={20} /></button><div><span className="public-kicker">YOUR ORDER</span><h2>Cart</h2></div></div>
-            {cart.length === 0 ? (
-              <div className="public-cart-empty"><ShoppingBag size={30} /><h3>Your cart is empty</h3><p>Choose an available paddle to get started.</p><button type="button" onClick={onClose}>Browse paddles</button></div>
-            ) : (
-              <>
-                <div className="public-cart-lines">
-                  {cart.map((line) => (
-                    <div className="public-cart-line" key={line.key}>
-                      <div className="public-cart-thumb">{line.photo ? <img src={line.photo} alt="" /> : <ImageSquare size={20} />}</div>
-                      <div className="public-cart-copy"><b>{line.name}</b><small>{line.color}</small><strong>{money(line.price * line.quantity)}</strong></div>
-                      <div className="public-stepper"><button type="button" onClick={() => onQuantity(line.key, -1)} aria-label={`Remove one ${line.name}`}><Minus size={13} /></button><span>{line.quantity}</span><button type="button" onClick={() => onQuantity(line.key, 1)} aria-label={`Add one ${line.name}`}><Plus size={13} /></button></div>
-                    </div>
-                  ))}
-                </div>
-                <div className="public-total"><span>Order total</span><strong>{money(total)}</strong></div>
-                <div className="public-deposit"><span>Deposit to reserve</span><strong>{money(total / 2)}</strong><p>Exactly 50% is due now. The remaining {money(total / 2)} is due before pickup or shipping.</p></div>
-                <button type="button" className="public-primary" onClick={() => onPhase("checkout")}>Continue to checkout <ArrowRight size={18} /></button>
-              </>
-            )}
-          </motion.div>
-        ) : (
-          <Checkout key="checkout" cart={cart} total={total} schema={schema} onBack={() => onPhase("cart")} onSent={onSent} reduce={reduce} />
+        <div className="public-product-actions">
+          {available(choice) && (
+            <div className="public-stepper">
+              <button type="button" onClick={() => setQuantity((n) => Math.max(1, n - 1))} aria-label="Fewer">
+                <Minus size={13} />
+              </button>
+              <span>{quantity}</span>
+              <button type="button" onClick={() => setQuantity((n) => Math.min(maxQty, n + 1))} aria-label="More">
+                <Plus size={13} />
+              </button>
+            </div>
+          )}
+
+          <button
+            type="button"
+            className={`public-primary ${added ? "is-added" : ""}`}
+            disabled={!available(choice)}
+            onClick={() => { addToCart(product, choice, quantity); setAdded(true); }}
+          >
+            {added ? <Check size={18} /> : <ShoppingBag size={18} />}
+            {" "}
+            {added ? "Added to cart" : available(choice) ? `Add ${choice?.color || "paddle"} to cart` : "This colour is sold out"}
+          </button>
+        </div>
+        {added && (
+          <Link to="../cart" className="public-secondary-link">View cart <ArrowRight size={13} /></Link>
         )}
-      </AnimatePresence>
-    </Overlay>
+
+        <div className="public-details-card">
+          <h3>Details</h3>
+          <dl>
+            <div><dt>Brand</dt><dd>{product.brand}</dd></div>
+            {product.category && <div><dt>Category</dt><dd>{product.category}</dd></div>}
+            {choice?.sku && <div><dt>SKU</dt><dd>{choice.sku}</dd></div>}
+            <div><dt>Deposit to reserve</dt><dd>{money((choice?.price || 0) / 2)}</dd></div>
+          </dl>
+        </div>
+      </section>
+    </div>
   );
 }
 
-function Checkout({ cart, total, schema, onBack, onSent, reduce }) {
+/** Dedicated cart page — a normal route, not an overlay, so it can be linked to, refreshed, or shared. */
+function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
+  if (cart.length === 0) {
+    return (
+      <main className="public-main">
+        <section className="public-state public-state-tall">
+          <ShoppingBag size={30} />
+          <h2>Your cart is empty</h2>
+          <p>Browse our paddles and find your next one.</p>
+          <Link to=".." className="public-state-link">Continue shopping</Link>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="public-main">
+      <section className="public-page-head public-page-head-compact">
+        <span className="public-kicker">YOUR ORDER</span>
+        <h1>Cart</h1>
+      </section>
+
+      <div className="public-cart-layout">
+        <motion.ul className="public-cart-lines" layout>
+          <AnimatePresence initial={false}>
+            {cart.map((line) => (
+              <motion.li
+                className="public-cart-line"
+                key={line.key}
+                layout
+                initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, x: -12 }}
+                transition={spring}
+              >
+                <div className="public-cart-thumb">{line.photo ? <img src={line.photo} alt="" /> : <ImageSquare size={20} />}</div>
+                <div className="public-cart-copy">
+                  <b>{line.name}</b>
+                  <small>{line.color}</small>
+                  <strong>{money(line.price * line.quantity)}</strong>
+                </div>
+                <div className="public-cart-line-actions">
+                  <div className="public-stepper">
+                    <button type="button" onClick={() => onQuantity(line.key, -1)} aria-label={`Remove one ${line.name}`}><Minus size={13} /></button>
+                    <span>{line.quantity}</span>
+                    <button type="button" onClick={() => onQuantity(line.key, 1)} aria-label={`Add one ${line.name}`}><Plus size={13} /></button>
+                  </div>
+                  <button type="button" className="public-remove" onClick={() => onRemove(line.key)} aria-label={`Remove ${line.name} from cart`}>
+                    <Trash size={15} />
+                  </button>
+                </div>
+              </motion.li>
+            ))}
+          </AnimatePresence>
+        </motion.ul>
+
+        <aside className="public-order-summary">
+          <h2>Order summary</h2>
+          <div className="public-total"><span>Order total</span><strong>{money(total)}</strong></div>
+          <div className="public-deposit"><span>Deposit to reserve</span><strong>{money(total / 2)}</strong><p>Exactly 50% is due now. The remaining {money(total / 2)} is due before pickup or shipping.</p></div>
+          <Link to="../checkout" className="public-primary">Continue to checkout <ArrowRight size={18} /></Link>
+          <Link to=".." className="public-secondary-link">Keep shopping</Link>
+        </aside>
+      </div>
+    </main>
+  );
+}
+
+/** One numbered step in the checkout — the visual spine the whole form hangs off. */
+function Step({ number, title, children }) {
+  return (
+    <div className="public-step">
+      <div className="public-step-head"><span className="public-step-num">{number}</span><h3>{title}</h3></div>
+      <div className="public-step-body">{children}</div>
+    </div>
+  );
+}
+
+/** Dedicated checkout page. Form logic (validation, submit, payment proof) is unchanged from before — only the shell moved from a slide-over to a routed page. */
+function CheckoutPage({ cart, total, onSent, reduce }) {
+  const navigate = useNavigate();
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0].id);
   const [form, setForm] = useState({
     name: "",
@@ -596,6 +836,19 @@ function Checkout({ cart, total, schema, onBack, onSent, reduce }) {
   useEffect(() => {
     if (error) errorRef.current?.focus();
   }, [error]);
+
+  if (cart.length === 0) {
+    return (
+      <main className="public-main">
+        <section className="public-state public-state-tall">
+          <ShoppingBag size={30} />
+          <h2>Your cart is empty</h2>
+          <p>Add a paddle before checking out.</p>
+          <Link to="../.." className="public-state-link">Browse paddles</Link>
+        </section>
+      </main>
+    );
+  }
 
   const chooseProof = async (file) => {
     setError("");
@@ -635,63 +888,36 @@ function Checkout({ cart, total, schema, onBack, onSent, reduce }) {
     setBusy(true);
     setError("");
     try {
-      const orderColumns = await ensureCheckoutSchema(schema.orderColumns);
-      const itemColumns = schema.itemColumns;
-      const requiredOrder = ["order_number", "customer", "status", "sale_total", "order_type"];
-      const requiredItems = ["order_id", "inventory_id", "product_name", "quantity", "unit_price", "unit_cost"];
-      if (requiredOrder.some((column) => !orderColumns.has(column)) || requiredItems.some((column) => !itemColumns.has(column))) {
-        throw new Error("Checkout is not ready yet. Please contact Paddle To Go.");
-      }
-
-      const number = `PB-${new Date().getFullYear()}-${Date.now().toString().slice(-7)}`;
-      const shippingAddress = form.fulfillment === "Shipping"
-        ? `${clean(form.address)}\n${clean(form.city)}`
-        : null;
-      const values = {
-        order_number: number,
-        order_date: new Date().toISOString().slice(0, 10),
-        customer_name: name,
-        customer: name,
-        customer_email: email,
-        customer_phone: phone,
-        shipping_address: shippingAddress,
-        channel: "Online storefront",
-        status: "Pending",
-        payment_requirement: "deposit",
-        shipping_income_php: 0,
-        discount_php: 0,
-        notes: form.fulfillment === "Shipping" ? "Shipping fee to be confirmed by Paddle To Go." : "Customer selected pickup.",
-        fulfillment_status: "Not shipped",
-        fulfillment_method: form.fulfillment,
-        payment_proof_url: form.proof,
-        acknowledgment: "Customer acknowledged this order is non-refundable and non-cancellable.",
-        sale_total: total,
-        product_cost: 0,
-        shipping_cost: 0,
-        freebie_cost: 0,
-        profit: 0,
-        order_type: cart.length > 1 ? "Batch" : "Individual",
-      };
-      const names = Object.keys(values).filter((column) => orderColumns.has(column));
-      const placeholders = names.map(() => "?").join(", ");
-      const result = await query(
-        `INSERT INTO orders (${names.join(", ")}) VALUES (${placeholders})`,
-        names.map((column) => values[column]),
-      );
-      const statements = cart.map((line) => ({
-        sql: `INSERT INTO order_items (${["order_id", "inventory_id", itemColumns.has("variant_id") ? "variant_id" : null, "product_name", "quantity", "unit_price", "unit_cost"].filter(Boolean).join(", ")}) VALUES (${Array.from({ length: itemColumns.has("variant_id") ? 7 : 6 }, () => "?").join(", ")})`,
-        args: [
-          result.lastInsertId,
-          line.productId,
-          ...(itemColumns.has("variant_id") ? [line.variantId || null] : []),
-          `${line.name}${line.color !== "Standard" ? ` · ${line.color}` : ""}`,
-          line.quantity,
-          line.price,
-          0,
-        ],
-      }));
-      await readBatch(statements);
-      onSent({ order_number: number, deposit: total / 2 });
+      const res = await fetch("/api/v1/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: JSON.stringify({
+          customer: {
+            name,
+            email,
+            phone,
+            address: form.fulfillment === "Shipping" ? `${clean(form.address)}, ${clean(form.city)}` : "",
+          },
+          fulfillment_method: form.fulfillment.toLowerCase(),
+          shipping_fee_php: 0,
+          items: cart.map((line) => ({
+            product_id: line.productId,
+            variant_id: line.variantId || undefined,
+            quantity: line.quantity,
+          })),
+          acknowledgment: true,
+          payment_proof_url: form.proof,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error?.message || "Your order could not be sent. Please try again.");
+      onSent();
+      navigate(`../order/${encodeURIComponent(data.order.order_number)}`, {
+        state: { orderNumber: data.order.order_number, deposit: data.order.deposit_php },
+      });
     } catch (submitError) {
       setError(submitError.message || "Your order could not be sent. Please try again.");
     } finally {
@@ -699,17 +925,87 @@ function Checkout({ cart, total, schema, onBack, onSent, reduce }) {
     }
   };
 
-  return <motion.div className="public-flow" initial={reduce ? { opacity: 0 } : { opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={reduce ? { opacity: 0 } : { opacity: 0, x: 18 }} transition={spring}>
-      <div className="public-sheet-head"><button type="button" onClick={onBack} aria-label="Back to cart"><ArrowLeft size={20} /></button><div><span className="public-kicker">50% DEPOSIT · {money(total / 2)}</span><h2>Checkout</h2></div></div>
+  return (
+    <main className="public-main">
+      <section className="public-page-head public-page-head-compact">
+        <Link to="../cart" className="public-back-link" aria-label="Back to cart"><ArrowLeft size={16} /> Back to cart</Link>
+        <span className="public-kicker">50% DEPOSIT · {money(total / 2)}</span>
+        <h1>Checkout</h1>
+      </section>
+
       {error && <p className="public-error" ref={errorRef} tabIndex="-1">{error}</p>}
-      <form className="public-checkout-form" onSubmit={submit}>
-        <fieldset><legend>Contact</legend><label>Full name<input autoComplete="name" value={form.name} onChange={(event) => set("name", event.target.value)} required /></label><label>Email<input type="email" autoComplete="email" value={form.email} onChange={(event) => set("email", event.target.value)} required /></label><label>Phone<input type="tel" autoComplete="tel" value={form.phone} onChange={(event) => set("phone", event.target.value)} required /></label></fieldset>
-        <fieldset><legend>Fulfilment</legend><div className="public-methods"><button type="button" className={form.fulfillment === "Pickup" ? "is-active" : ""} onClick={() => set("fulfillment", "Pickup")}><Package size={18} /><span><b>Pickup</b><small>Arrange after review</small></span></button><button type="button" className={form.fulfillment === "Shipping" ? "is-active" : ""} onClick={() => set("fulfillment", "Shipping")}><Truck size={18} /><span><b>Shipping</b><small>Fee confirmed later</small></span></button></div><AnimatePresence initial={false}>{form.fulfillment === "Shipping" && <motion.div className="public-address" initial={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} transition={spring}><label>Street address<textarea autoComplete="street-address" value={form.address} onChange={(event) => set("address", event.target.value)} required /></label><label>City / region<input autoComplete="address-level2" value={form.city} onChange={(event) => set("city", event.target.value)} required /></label></motion.div>}</AnimatePresence></fieldset>
-        <fieldset><legend>Payment</legend><div className="public-deposit is-compact"><span>Pay now</span><strong>{money(total / 2)}</strong><p>Scan the selected QR to pay your 50% deposit. The other {money(total / 2)} is due before fulfilment. Shipping is separate and confirmed if selected.</p></div><div className="public-payment-methods" aria-label="Choose a payment QR"><p className="public-payment-label">Choose where you paid</p><div className="public-payment-cards">{PAYMENT_METHODS.map((method) => <button type="button" key={method.id} className={paymentMethod === method.id ? "is-active" : ""} onClick={() => setPaymentMethod(method.id)} aria-pressed={paymentMethod === method.id}><img className="public-payment-card-qr" src={method.image} alt="" /><b>{method.label}</b>{paymentMethod === method.id && <Check size={16} />}</button>)}</div><div className="public-selected-qr"><img src={selectedPayment.image} alt={`${selectedPayment.label} payment QR`} /><p>Scan this QR, complete your deposit, then attach the receipt below.</p></div></div><label className={`public-upload ${form.proof ? "has-file" : ""}`}><ImageSquare size={22} /><span><b>{form.proof ? "Proof added" : "Upload proof of payment"}</b><small>{form.proofName || "JPG, PNG, or PDF, up to 5 MB"}</small></span><input type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; chooseProof(file); }} /></label><p className="public-proof-note">After submitting, keep your receipt ready. If your order workflow provides a configured Messenger contact, use it to send the same proof and confirm your order number.</p></fieldset>
-        <label className="public-ack"><input type="checkbox" checked={form.acknowledged} onChange={(event) => set("acknowledged", event.target.checked)} /><span>I understand this order is <b>non-refundable and non-cancellable</b>.</span></label>
-        <button type="submit" className="public-primary" disabled={busy}>{busy ? "Placing order…" : `Place order · Pay ${money(total / 2)}`} <ArrowRight size={18} /></button>
-      </form>
-    </motion.div>;
+
+      <div className="public-checkout-layout">
+        <form className="public-checkout-form" onSubmit={submit}>
+          <Step number={1} title="Contact information">
+            <label>Full name<input autoComplete="name" value={form.name} onChange={(event) => set("name", event.target.value)} required /></label>
+            <label>Email<input type="email" autoComplete="email" value={form.email} onChange={(event) => set("email", event.target.value)} required /></label>
+            <label>Phone<input type="tel" autoComplete="tel" value={form.phone} onChange={(event) => set("phone", event.target.value)} required /></label>
+          </Step>
+
+          <Step number={2} title="Fulfilment">
+            <div className="public-methods">
+              <button type="button" className={form.fulfillment === "Pickup" ? "is-active" : ""} onClick={() => set("fulfillment", "Pickup")}><Package size={18} /><span><b>Pickup</b><small>Arrange after review</small></span></button>
+              <button type="button" className={form.fulfillment === "Shipping" ? "is-active" : ""} onClick={() => set("fulfillment", "Shipping")}><Truck size={18} /><span><b>Shipping</b><small>Fee confirmed later</small></span></button>
+            </div>
+            <AnimatePresence initial={false}>
+              {form.fulfillment === "Shipping" && (
+                <motion.div className="public-address" initial={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} transition={spring}>
+                  <label>Street address<textarea autoComplete="street-address" value={form.address} onChange={(event) => set("address", event.target.value)} required /></label>
+                  <label>City / region<input autoComplete="address-level2" value={form.city} onChange={(event) => set("city", event.target.value)} required /></label>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </Step>
+
+          <Step number={3} title="Scan to pay">
+            <div className="public-payment-methods" aria-label="Choose a payment QR">
+              <p className="public-payment-label">Choose where you paid</p>
+              <div className="public-payment-cards">
+                {PAYMENT_METHODS.map((method) => (
+                  <button type="button" key={method.id} className={paymentMethod === method.id ? "is-active" : ""} onClick={() => setPaymentMethod(method.id)} aria-pressed={paymentMethod === method.id}>
+                    <img className="public-payment-card-qr" src={method.image} alt="" />
+                    <b>{method.label}</b>
+                    {paymentMethod === method.id && <Check size={16} />}
+                  </button>
+                ))}
+              </div>
+              <div className="public-selected-qr">
+                <img src={selectedPayment.image} alt={`${selectedPayment.label} payment QR`} />
+                <p>Scan this QR, complete your deposit, then attach the receipt below.</p>
+              </div>
+            </div>
+          </Step>
+
+          <Step number={4} title="Proof of payment">
+            <label className={`public-upload ${form.proof ? "has-file" : ""}`}>
+              <ImageSquare size={22} />
+              <span><b>{form.proof ? "Proof added" : "Upload proof of payment"}</b><small>{form.proofName || "JPG, PNG, or PDF, up to 5 MB"}</small></span>
+              <input type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; chooseProof(file); }} />
+            </label>
+            <p className="public-proof-note">After submitting, keep your receipt ready. If your order workflow provides a configured Messenger contact, use it to send the same proof and confirm your order number.</p>
+          </Step>
+
+          <label className="public-ack"><input type="checkbox" checked={form.acknowledged} onChange={(event) => set("acknowledged", event.target.checked)} /><span>I understand this order is <b>non-refundable and non-cancellable</b>.</span></label>
+          <button type="submit" className="public-primary" disabled={busy}>{busy ? "Placing order…" : `Place order · Pay ${money(total / 2)}`} <ArrowRight size={18} /></button>
+        </form>
+
+        <aside className="public-order-summary">
+          <h2>Order summary</h2>
+          <ul className="public-summary-lines">
+            {cart.map((line) => (
+              <li key={line.key}>
+                <span>{line.quantity}× {line.name} <small>{line.color}</small></span>
+                <strong>{money(line.price * line.quantity)}</strong>
+              </li>
+            ))}
+          </ul>
+          <div className="public-total"><span>Order total</span><strong>{money(total)}</strong></div>
+          <div className="public-deposit is-compact"><span>Pay now</span><strong>{money(total / 2)}</strong><p>The other {money(total / 2)} is due before fulfilment. Shipping is separate and confirmed if selected.</p></div>
+        </aside>
+      </div>
+    </main>
+  );
 }
 
 async function compactProof(file) {
@@ -750,14 +1046,23 @@ function CatalogSkeleton() {
   return <section className="public-grid public-skeleton" aria-label="Loading paddles">{Array.from({ length: 6 }).map((_, index) => <div key={index}><i /><span /><b /></div>)}</section>;
 }
 
-function Success({ order, onClose, reduce }) {
+/** Order confirmation is its own route so it can be reloaded, bookmarked, or reopened from an email — not a modal that vanishes on refresh. */
+function OrderConfirmation() {
+  const { orderNumber } = useParams();
+  const location = useLocation();
+  const deposit = location.state?.deposit;
+
   return (
-    <Overlay onClose={onClose} className="public-success" reduce={reduce}>
-      <div className="public-success-icon"><Check size={27} /></div>
-      <span className="public-kicker">ORDER {order.order_number}</span>
-      <h2>Your paddle is requested.</h2>
-      <p>We received your order and {money(order.deposit)} proof. Paddle To Go will review it and confirm fulfilment.</p>
-      <button type="button" className="public-primary" onClick={onClose}>Continue shopping <ArrowRight size={18} /></button>
-    </Overlay>
+    <main className="public-main">
+      <section className="public-state public-state-tall public-success-page">
+        <div className="public-success-icon"><Check size={27} /></div>
+        <span className="public-kicker">ORDER {orderNumber}</span>
+        <h2>Your paddle is requested.</h2>
+        <p>
+          We received your order{deposit != null ? ` and ${money(deposit)} proof` : ""}. Paddle To Go will review it and confirm fulfilment.
+        </p>
+        <Link to="../.." className="public-state-link">Continue shopping</Link>
+      </section>
+    </main>
   );
 }

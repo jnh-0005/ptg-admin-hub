@@ -227,8 +227,10 @@ function Shell() {
  */
 export { PUBLIC_CATALOG_PATH };
 
+// Prefix match, not exact: a product detail page like
+// /public/paddles-7x4k/paddle/12 is still the storefront, not the admin app.
 const isPublicCatalog = (pathname) =>
-  pathname === PUBLIC_CATALOG_PATH || pathname === `${PUBLIC_CATALOG_PATH}/`;
+  pathname === PUBLIC_CATALOG_PATH || pathname.startsWith(`${PUBLIC_CATALOG_PATH}/`);
 
 function Admin() {
   return (

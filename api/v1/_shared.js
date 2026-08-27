@@ -1,5 +1,10 @@
 const DEFAULT_ORIGIN = "https://storefront.example";
-const MAX_BODY_BYTES = 32_000;
+// Proof-of-payment is an inline compressed image (see compactProof in
+// PublicCatalog.jsx), not a hosted URL — it can legitimately run up to the
+// same 150,000-char cap that compactProof enforces client-side. The body
+// limit has to be comfortably above that plus the rest of the order fields.
+const MAX_PROOF_URL_CHARS = 150_000;
+const MAX_BODY_BYTES = 200_000;
 const rateState = new Map();
 
 export function apiError(status, code, message, details) {
@@ -108,7 +113,11 @@ export async function createOrder(db, body) {
   if (!cleanText(customer.name, 120)) errors.push("customer.name is required");
   if (!validEmail(customer.email)) errors.push("customer.email must be valid");
   if (!cleanText(customer.phone, 40)) errors.push("customer.phone is required");
-  if (!cleanText(customer.address, 500)) errors.push("customer.address is required");
+  // Pickup orders arrange details after review, same as the admin app's own
+  // checkout — an address is only meaningful (and required) for shipping.
+  if (body?.fulfillment_method === "shipping" && !cleanText(customer.address, 500)) {
+    errors.push("customer.address is required for shipping");
+  }
   if (!Array.isArray(body?.items) || body.items.length < 1 || body.items.length > 5) errors.push("items must contain 1 to 5 lines");
   if (body?.acknowledgment !== true) errors.push("acknowledgment must be accepted");
   if (!["pickup", "shipping"].includes(body?.fulfillment_method)) errors.push("fulfillment_method must be pickup or shipping");
@@ -118,10 +127,14 @@ export async function createOrder(db, body) {
   if (requestedIds.some((x) => !Number.isInteger(x) || x <= 0) || new Set(requestedIds).size !== requestedIds.length) {
     return apiError(422, "validation_error", "each item needs a unique positive product_id or variant_id");
   }
+  // inventory has no `active` column in this schema — archived products are
+  // marked with a `[archived]` prefix in `notes` instead (see schema.js),
+  // the same rule publicCatalog() above already applies.
   const rows = await db.query(`SELECT i.id AS product_id, i.name, i.unit_cost, i.sell_price, i.quantity AS product_quantity,
     v.id AS variant_id, v.color, v.active AS variant_active, v.quantity AS variant_quantity, v.selling_price_php
     FROM inventory i LEFT JOIN inventory_variants v ON v.inventory_id = i.id
-    WHERE i.active = 1 AND (i.id IN (${requestedIds.filter((x) => x).map(() => "?").join(",")}) OR v.id IN (${requestedIds.map(() => "?").join(",")}))`, [...requestedIds, ...requestedIds]);
+    WHERE COALESCE(i.notes, '') NOT LIKE '[archived]%' AND COALESCE(i.category, '') <> 'Add-on'
+      AND (i.id IN (${requestedIds.filter((x) => x).map(() => "?").join(",")}) OR v.id IN (${requestedIds.map(() => "?").join(",")}))`, [...requestedIds, ...requestedIds]);
   const byKey = new Map();
   for (const row of rows.rows) { byKey.set(Number(row.variant_id || row.product_id), row); }
   const lines = [];
@@ -141,9 +154,17 @@ export async function createOrder(db, body) {
   const total = Math.round((subtotal + shipping) * 100) / 100;
   const deposit = Math.round(total * 50) / 100;
   const orderNumber = `WEB-${Date.now().toString(36).toUpperCase()}`;
-  const note = JSON.stringify({ source: "storefront_api_v1", acknowledgment: true, payment_proof_url: cleanText(body.payment_proof_url, 2000) || null });
-  const inserted = await db.query(`INSERT INTO orders (order_number, order_date, customer_name, customer, customer_email, customer_phone, shipping_address, channel, status, payment_requirement, shipping_income_php, notes, sale_total, product_cost, shipping_cost, profit, order_type, fulfillment_method, acknowledgment)
-    VALUES (?, CURRENT_DATE, ?, ?, ?, ?, ?, 'Storefront', 'Pending', 'deposit', ?, ?, ?, ?, ?, ?, 'Batch', ?, ?)`, [orderNumber, cleanText(customer.name, 120), cleanText(customer.name, 120), cleanText(customer.email, 200), cleanText(customer.phone, 40), cleanText(customer.address, 500), shipping, note, total, lines.reduce((s, l) => s + l.cost * l.quantity, 0), shipping, 0, body.fulfillment_method, "Customer accepted non-refundable/non-cancellable acknowledgment"]);
+  // payment_proof_url is a real column the admin's order detail view reads
+  // directly (per docs/storefront-api-v1.md) — it must not be buried inside
+  // `notes` as JSON, or "view payment proof" in the admin app shows nothing.
+  const proofUrl = cleanText(body.payment_proof_url, MAX_PROOF_URL_CHARS) || null;
+  const isShipping = body.fulfillment_method === "shipping";
+  const note = isShipping
+    ? "Shipping fee to be confirmed by Paddle To Go."
+    : "Customer selected pickup.";
+  const shippingAddress = isShipping ? cleanText(customer.address, 500) || null : null;
+  const inserted = await db.query(`INSERT INTO orders (order_number, order_date, customer_name, customer, customer_email, customer_phone, shipping_address, channel, status, payment_requirement, shipping_income_php, notes, sale_total, product_cost, shipping_cost, profit, order_type, fulfillment_method, payment_proof_url, acknowledgment)
+    VALUES (?, CURRENT_DATE, ?, ?, ?, ?, ?, 'Storefront', 'Pending', 'deposit', ?, ?, ?, ?, ?, ?, 'Batch', ?, ?, ?)`, [orderNumber, cleanText(customer.name, 120), cleanText(customer.name, 120), cleanText(customer.email, 200), cleanText(customer.phone, 40), shippingAddress, shipping, note, total, lines.reduce((s, l) => s + l.cost * l.quantity, 0), shipping, 0, body.fulfillment_method, proofUrl, "Customer accepted non-refundable/non-cancellable acknowledgment"]);
   const orderId = inserted.lastInsertId;
   await db.batch(lines.map((line) => ({ sql: `INSERT INTO order_items (order_id, inventory_id, variant_id, product_name, quantity, unit_price, unit_cost) VALUES (?, ?, ?, ?, ?, ?, ?)`, args: [orderId, line.product_id, line.variant_id, line.name, line.quantity, line.unit, line.cost] })));
   return json(201, { version: "v1", order: { id: orderId, order_number: orderNumber, status: "Pending", subtotal_php: subtotal, shipping_php: shipping, total_php: total, deposit_php: deposit, balance_php: Math.round((total - deposit) * 100) / 100, payment_requirement: "deposit" } });

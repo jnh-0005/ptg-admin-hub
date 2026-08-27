@@ -71,13 +71,20 @@ export function translateDialect(sql) {
   // or assignment) — Postgres needs the timestamptz cast to text explicitly.
   out = out.replace(/CURRENT_TIMESTAMP(?!::)/gi, "CURRENT_TIMESTAMP::text");
 
+  // Same problem, same fix: api/v1/_shared.js writes CURRENT_DATE into the
+  // TEXT order_date column.
+  out = out.replace(/CURRENT_DATE(?!::)/gi, "CURRENT_DATE::text");
+
   // date(created_at) — created_at is TEXT here, needs an explicit cast for
   // Postgres to resolve which date() overload applies.
   out = out.replace(/\bdate\(created_at\)/gi, "date(created_at::timestamptz)");
 
-  // SQLite's case-insensitive ORDER BY collation; only ever wraps a single
-  // bare column reference in this codebase.
-  out = out.replace(/(\w+)\s+COLLATE\s+NOCASE/gi, "LOWER($1)");
+  // SQLite's case-insensitive ORDER BY collation, wrapping either a bare
+  // column (name COLLATE NOCASE) or an alias-qualified one (i.name COLLATE
+  // NOCASE) — the latter appears in api/v1/_shared.js's joined queries.
+  // \w+ alone would only grab "name" and leave a stray "i." in front of the
+  // LOWER(...) call, producing invalid SQL.
+  out = out.replace(/((?:\w+\.)?\w+)\s+COLLATE\s+NOCASE/gi, "LOWER($1)");
 
   // The one legacy order-number backfill using SQLite's negative substr().
   out = out.replace(/substr\('000' \|\| id, -3\)/gi, "RIGHT('000' || id::text, 3)");
@@ -155,6 +162,30 @@ async function execOne(client, { sql, args = [] }) {
  * this as an open item). Any single statement failing rolls back the whole
  * batch instead of leaving a half-written order.
  */
+/**
+ * The `db.query(sql, args)` / `db.batch(statements)` shape api/v1/_shared.js
+ * expects — rows as objects keyed by column name, same as folkdb.js gives
+ * the browser. Thin wrapper over runStatements so the v1 handlers (written
+ * against that contract, per docs/storefront-api-v1.md) can run unmodified.
+ */
+export function webDbAdapter() {
+  const toObjectRows = (result) => ({
+    rows: result.rows.map((row) => Object.fromEntries(result.cols.map((c, i) => [c, row[i]]))),
+    lastInsertId: result.last_insert_rowid,
+    affectedRows: result.affected_row_count,
+  });
+  return {
+    async query(sql, args = []) {
+      const [result] = await runStatements([{ sql, args }]);
+      return toObjectRows(result);
+    },
+    async batch(statements) {
+      const results = await runStatements(statements);
+      return results.map(toObjectRows);
+    },
+  };
+}
+
 export async function runStatements(statements) {
   const client = await getPool().connect();
   try {

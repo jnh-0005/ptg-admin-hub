@@ -19,6 +19,12 @@ describe("SQLite -> Postgres dialect translation", () => {
     expect(translateDialect("CURRENT_TIMESTAMP::text")).toBe("CURRENT_TIMESTAMP::text");
   });
 
+  it("casts CURRENT_DATE the same way, for the same reason", () => {
+    expect(translateDialect("INSERT INTO orders (order_date) VALUES (CURRENT_DATE)")).toBe(
+      "INSERT INTO orders (order_date) VALUES (CURRENT_DATE::text)",
+    );
+  });
+
   it("casts date(created_at) since created_at is stored as TEXT", () => {
     expect(translateDialect("SELECT date(created_at) FROM orders")).toBe(
       "SELECT date(created_at::timestamptz) FROM orders",
@@ -31,6 +37,12 @@ describe("SQLite -> Postgres dialect translation", () => {
     );
     expect(translateDialect("ORDER BY identity_type ASC, identity_key COLLATE NOCASE ASC")).toBe(
       "ORDER BY identity_type ASC, LOWER(identity_key) ASC",
+    );
+  });
+
+  it("keeps a table alias intact on a qualified column (i.name COLLATE NOCASE)", () => {
+    expect(translateDialect("SELECT * FROM inventory i ORDER BY i.name COLLATE NOCASE")).toBe(
+      "SELECT * FROM inventory i ORDER BY LOWER(i.name)",
     );
   });
 
