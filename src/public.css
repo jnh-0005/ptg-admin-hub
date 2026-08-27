@@ -129,7 +129,12 @@ button.public-compare-toggle:disabled{opacity:.4}
 .public-compare-bar-anchor{position:fixed;left:50%;bottom:16px;z-index:20;transform:translateX(-50%)}
 .public-compare-bar{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 16px;border-radius:999px;background:var(--forest);color:#fff;box-shadow:0 12px 32px #05140f4d}
 .public-compare-bar span{font-size:11px;font-weight:700;white-space:nowrap}
-.public-compare-bar-link{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:#fff;color:var(--forest);font-size:11px;font-weight:800;white-space:nowrap}
+/* a.public-compare-bar-link, not the bare class — same specificity fight as
+   button.public-compare-toggle above, this time against .public-shell
+   a{color:inherit}: without the type selector this loses and the link
+   quietly inherits white from its dark .public-compare-bar parent, i.e. a
+   blank-looking white pill with genuinely invisible text. */
+a.public-compare-bar-link{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:#fff;color:var(--forest);font-size:11px;font-weight:800;white-space:nowrap}
 .public-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
 .public-compare-card{position:relative;display:grid;gap:6px;padding:16px;border:1px solid var(--line);border-radius:16px;background:#fff}
 .public-compare-remove{position:absolute;top:10px;right:10px;z-index:1;display:grid;width:26px;height:26px;place-items:center;border:0;border-radius:50%;background:#f0f2f1;color:var(--muted)}
