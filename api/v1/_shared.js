@@ -88,6 +88,56 @@ export function publicPhoto(row) {
   return /^(https:\/\/|\/images\/|\/assets\/)[^\s<>"']+$/i.test(value) ? value : null;
 }
 
+/**
+ * "Ships in ~N weeks", computed honestly from a real expected_arrival date
+ * an operator entered — never a fabricated range. A date in the past or
+ * today reads as "Shipping soon" rather than "~0 weeks".
+ */
+export function shipsInText(expectedArrival) {
+  const arrival = new Date(`${expectedArrival}T00:00:00Z`);
+  if (Number.isNaN(arrival.getTime())) return null;
+  const days = Math.ceil((arrival - Date.now()) / 86_400_000);
+  if (days <= 0) return "Shipping soon";
+  const weeks = Math.max(1, Math.round(days / 7));
+  return `Ships in ~${weeks} week${weeks === 1 ? "" : "s"}`;
+}
+
+/**
+ * For every product/variant currently out of stock, the storefront wants to
+ * say WHEN — sourced from whichever open batch (not yet Received or
+ * Cancelled) is bringing it in, picking the soonest expected_arrival when
+ * more than one batch qualifies. A product/variant with no matching batch,
+ * or a batch with neither date set, gets no preorder info at all — never a
+ * guessed date. Returns two maps (variant_id -> info, product_id -> info),
+ * the product map built only from batch_items with no variant_id (a batch
+ * line for a paddle that has no colours).
+ */
+async function preorderInfoMaps(db) {
+  const rows = await db.query(`SELECT bi.product_id, bi.variant_id, b.expected_arrival, b.preorder_cutoff_date
+    FROM batch_items bi
+    JOIN batches b ON b.id = bi.batch_id
+    WHERE b.status NOT IN ('Received', 'Cancelled')`);
+  const byVariant = new Map();
+  const byProduct = new Map();
+  for (const row of rows.rows) {
+    const info = {
+      ships_in: row.expected_arrival ? shipsInText(row.expected_arrival) : null,
+      ready_date: row.expected_arrival || null,
+      cutoff_date: row.preorder_cutoff_date || null,
+    };
+    if (!info.ships_in && !info.cutoff_date) continue; // nothing real to say
+    const map = row.variant_id ? byVariant : byProduct;
+    const key = row.variant_id || row.product_id;
+    const existing = map.get(key);
+    // Prefer the batch arriving soonest; a batch with no date at all only
+    // fills the slot if nothing better has claimed it yet.
+    if (!existing || (info.ready_date && (!existing.ready_date || info.ready_date < existing.ready_date))) {
+      map.set(key, info);
+    }
+  }
+  return { byVariant, byProduct };
+}
+
 export async function publicCatalog(db) {
   const products = await db.query(`SELECT i.id, i.name, i.sku, i.category, i.sell_price, i.photo_url,
     CASE WHEN COALESCE(i.quantity, 0) > 0 THEN 'available' ELSE 'unavailable' END AS availability
@@ -101,13 +151,16 @@ export async function publicCatalog(db) {
   const photos = await db.query(`SELECT identity_type, identity_key, photo_url FROM storefront_photos
     WHERE active = 1 AND approval_status IN ('approved', 'published')`);
   const photoMap = new Map(photos.rows.map((p) => [`${p.identity_type}:${p.identity_key}`, publicPhoto(p)]));
+  const { byVariant, byProduct } = await preorderInfoMaps(db);
   const items = products.rows.map((p) => ({
     id: p.id, name: p.name, sku: p.sku || null, category: p.category || null,
     price_php: Number(p.sell_price || 0), availability: p.availability,
     photo_url: photoMap.get(`model:${p.name}`) || photoMap.get(`brand:${String(p.name).split(/\s+/)[0]}`) || publicPhoto(p),
+    preorder: p.availability === "unavailable" ? byProduct.get(p.id) || null : null,
     variants: variants.rows.filter((v) => Number(v.inventory_id) === Number(p.id)).map((v) => ({
       id: v.id, color: v.color, sku: v.sku || null, price_php: Number(v.selling_price_php || p.sell_price || 0),
       availability: v.availability, photo_url: photoMap.get(`model:${p.name}::${v.color}`) || publicPhoto(v),
+      preorder: v.availability === "unavailable" ? byVariant.get(v.id) || null : null,
     })),
   }));
   return { version: "v1", currency: "PHP", products: items };

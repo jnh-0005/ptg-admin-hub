@@ -122,6 +122,13 @@ const ADDED_COLUMNS = [
   ["batches", "intl_discount_value", "REAL DEFAULT 0"],
   ["batches", "intl_actual_paid_php", "REAL"],
   ["batches", "domestic_shipping_php", "REAL DEFAULT 0"],
+  // The pre-order order-cutoff date for this batch — when it varies per
+  // shipment. Purely additive, read by the storefront (publicCatalog) to
+  // show a real "order by" date on any paddle sourced from this batch;
+  // `expected_arrival` (already existed) is what "Ships in ~N weeks" is
+  // computed from. Neither is required — a batch with neither set just
+  // shows the existing generic pre-order note, never a guessed date.
+  ["batches", "preorder_cutoff_date", "TEXT"],
   /*
     A NEW PHOTO IS A PROPOSAL UNTIL SOMEBODY APPROVES IT. `pending_photo_url`
     holds the waiting shot APART from `photo_url`, so re-photographing a live

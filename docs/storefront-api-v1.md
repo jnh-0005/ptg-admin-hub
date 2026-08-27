@@ -12,6 +12,14 @@ Do not expose `/__folkdata/query`, admin routes, or the database transport to th
 
 Requires `Authorization: Bearer <PTG_STOREFRONT_API_KEY>`. Returns only active, non-archived products, customer prices, `available` or `unavailable` state, active variants, and approved storefront photos. It never returns quantities, costs, payments, batches, orders, settings, or SQL.
 
+An `unavailable` product or variant carries a `preorder` object (`null` on anything `available`):
+
+```json
+"preorder": {"ships_in": "Ships in ~3 weeks", "ready_date": "2026-09-20", "cutoff_date": "2026-09-05"}
+```
+
+Sourced from whichever open batch (not yet `Received` or `Cancelled`) carries that product/variant in `batch_items`, picking the soonest `expected_arrival` when more than one qualifies. `ships_in` is computed honestly from that real date, never a fabricated range; `cutoff_date` is the batch's own `preorder_cutoff_date` (set per batch in the admin Batches screen, since it genuinely varies by shipment). Any field with nothing real on file is `null`, and `preorder` itself is `null` whenever nothing on the matching batch(es) has either date set — never a guess.
+
 `OPTIONS /api/v1/catalog`
 
 CORS preflight. Only origins listed in `STOREFRONT_ORIGINS` are echoed. The default is a non-production placeholder and must be replaced.

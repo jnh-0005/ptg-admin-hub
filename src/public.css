@@ -110,6 +110,7 @@ a.public-back-link{display:flex;width:fit-content;align-items:center;gap:6px;mar
 .public-card-name{display:block;min-width:0}
 .public-card-name span{display:block;color:var(--teal);font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .public-card-name h2{min-width:0;overflow:hidden;margin:3px 0 0;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:-.02em}
+.public-card-shipsin{margin:3px 0 0;color:var(--muted);font-size:9px;font-weight:600}
 .public-card-meta{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:9px}
 .public-card-meta strong{font:700 13px/1.2 "JetBrains Mono Variable",monospace}
 /* button.public-quick-add,a.public-quick-add — this class renders as both a
@@ -326,6 +327,8 @@ button.public-product-compare-link:disabled{opacity:.4}
    image + colour-picker list below already cover this. See the 960px
    breakpoint for where it turns on. */
 .public-product-thumbs{display:none}
+.public-preorder-eta{display:flex;flex-wrap:wrap;gap:4px 10px;margin:10px 0 0;font-size:10px;color:var(--muted)}
+.public-preorder-eta strong{color:var(--ink)}
 .public-preorder-note{margin:10px 0 0;padding:10px 12px;border:1px solid #a6cbc5;border-radius:10px;background:#e9f4f2;color:var(--forest);font-size:10px;line-height:1.5}
 .public-details-card{margin-top:20px;padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff}
 .public-details-card h3{margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
@@ -371,6 +374,10 @@ button.public-product-compare-link:disabled{opacity:.4}
 .public-order-summary>.public-secondary-link{margin-top:8px}
 
 /* ── Checkout page ──────────────────────────────────────────────────── */
+.public-preorder-banner{display:flex;align-items:flex-start;gap:10px;margin:0 0 14px;padding:12px 14px;border:1px solid #a6cbc5;border-radius:12px;background:#e9f4f2;color:var(--forest);font-size:11px;line-height:1.5}
+.public-preorder-banner-badge{flex:0 0 auto;padding:4px 9px;border-radius:999px;background:var(--teal);color:#fff;font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.public-preorder-banner p{margin:0}
+.public-preorder-banner-list{margin:6px 0 0;padding:0 0 0 16px;font-size:10px;color:var(--forest)}
 .public-error{margin:0 0 14px;padding:10px 12px;border:1px solid #c7d8d5;border-radius:9px;background:#f2f6f5;color:var(--forest);font-size:10px;line-height:1.45}
 .public-checkout-layout{display:grid;gap:16px;align-items:start}
 .public-checkout-form{display:grid;gap:12px}

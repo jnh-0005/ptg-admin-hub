@@ -701,19 +701,26 @@ export async function saveBatch({ id, batchRow, items, consumables }) {
     batchRow.notes?.trim() || null,
     batchRow.carrier?.trim() || null,
     batchRow.tracking_number?.trim() || null,
+    batchRow.preorder_cutoff_date || null,
   ];
 
   let batchId = id;
   if (id) {
     await db(
       `UPDATE batches SET batch_name = ?, batch_id = ?, supplier = ?, order_date = ?, expected_arrival = ?,
-              shipping_php = ?, domestic_shipping_php = ?, other_cost_php = ?, currency = ?, exchange_rate = ?, actual_weight_kg = ?, chargeable_weight_kg = ?, intl_shipping_method = ?, shipping_allocation_method = ?, local_shipping_php = ?, other_costs_php = ?, intl_quote_basis = ?, intl_combined_weight_kg = ?, intl_rate_vnd_per_kg = ?, intl_gross_vnd = ?, intl_discount_mode = ?, intl_discount_value = ?, intl_actual_paid_php = ?, status = ?, notes = ?, carrier = ?, tracking_number = ?
+              shipping_php = ?, domestic_shipping_php = ?, other_cost_php = ?, currency = ?, exchange_rate = ?, actual_weight_kg = ?, chargeable_weight_kg = ?, intl_shipping_method = ?, shipping_allocation_method = ?, local_shipping_php = ?, other_costs_php = ?, intl_quote_basis = ?, intl_combined_weight_kg = ?, intl_rate_vnd_per_kg = ?, intl_gross_vnd = ?, intl_discount_mode = ?, intl_discount_value = ?, intl_actual_paid_php = ?, status = ?, notes = ?, carrier = ?, tracking_number = ?, preorder_cutoff_date = ?
         WHERE id = ?`,
       [...args, id],
     );
   } else {
     const res = await db(
-      `INSERT INTO batches (batch_name, batch_id, supplier, order_date, expected_arrival, shipping_php, domestic_shipping_php, other_cost_php, currency, exchange_rate, actual_weight_kg, chargeable_weight_kg, intl_shipping_method, shipping_allocation_method, local_shipping_php, other_costs_php, intl_quote_basis, intl_combined_weight_kg, intl_rate_vnd_per_kg, intl_gross_vnd, intl_discount_mode, intl_discount_value, intl_actual_paid_php, status, notes, carrier, tracking_number)
+      // NOTE: this VALUES list previously had one more `?` than the column
+      // list had columns (28 placeholders, 27 columns) — a pre-existing bug
+      // that would make Postgres reject every brand-new batch insert
+      // ("INSERT has more expressions than target columns"). Fixed here
+      // while adding preorder_cutoff_date, since it touches this exact line:
+      // placeholder count now matches column count (28 and 28) exactly.
+      `INSERT INTO batches (batch_name, batch_id, supplier, order_date, expected_arrival, shipping_php, domestic_shipping_php, other_cost_php, currency, exchange_rate, actual_weight_kg, chargeable_weight_kg, intl_shipping_method, shipping_allocation_method, local_shipping_php, other_costs_php, intl_quote_basis, intl_combined_weight_kg, intl_rate_vnd_per_kg, intl_gross_vnd, intl_discount_mode, intl_discount_value, intl_actual_paid_php, status, notes, carrier, tracking_number, preorder_cutoff_date)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [...args],
     );

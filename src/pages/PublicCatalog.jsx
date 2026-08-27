@@ -61,6 +61,14 @@ const money = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+// A real batch date (see api/v1/_shared.js's preorder.ready_date/cutoff_date),
+// never a computed guess — this only formats it for reading.
+const formatEta = (dateStr) => {
+  const date = new Date(`${dateStr}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+};
 // "available" means real, counted stock is on hand right now. Zero stock is
 // no longer a dead end — every paddle PTG carries is imported in batches, so
 // a colour with nothing on hand is a Pre-Order, not Sold Out, and stays fully
@@ -186,6 +194,7 @@ export async function loadCatalog() {
       quantity: product.availability === "available" ? MAX_ORDER_QTY : 0,
       price: product.price_php,
       photo: resolvePhotoAssetUrl(product.photo_url),
+      preorder: product.preorder || null,
     };
     const choices = (product.variants || []).length
       ? product.variants.map((variant) => ({
@@ -195,6 +204,7 @@ export async function loadCatalog() {
           quantity: variant.availability === "available" ? MAX_ORDER_QTY : 0,
           price: variant.price_php,
           photo: resolvePhotoAssetUrl(variant.photo_url),
+          preorder: variant.preorder || null,
         }))
       : [baseChoice];
     return {
@@ -411,6 +421,10 @@ export default function PublicCatalog() {
           photo: choice.photo,
           max,
           quantity: Math.min(max, quantity),
+          // Snapshotted at add-to-cart time, same as price/photo above — not
+          // re-checked live while the line sits in the cart.
+          isPreorder: !available(choice),
+          preorder: choice.preorder || null,
         },
       ];
     });
@@ -728,6 +742,11 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
         <motion.section className="public-grid" layout>
           {filtered.map((product, index) => {
             const inStock = product.choices.some(available);
+            // Any choice's real ships-in estimate — a product can have
+            // several colours on different incoming batches, so this just
+            // shows whichever one actually has a date on file rather than
+            // guessing a single figure for the whole card.
+            const shipsIn = !inStock ? product.choices.find((c) => c.preorder?.ships_in)?.preorder?.ships_in : null;
             const fromPrice = Math.min(...product.choices.map((choice) => choice.price));
             const singleChoice = product.choices.length === 1 ? product.choices[0] : null;
             const justAddedThis = justAdded === product.id;
@@ -749,6 +768,7 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
                   <Link to={`paddle/${product.id}`}>
                     <div className="public-card-name"><span>{product.brand}</span><h2>{product.name}</h2></div>
                   </Link>
+                  {shipsIn && <p className="public-card-shipsin">{shipsIn}</p>}
                   <div className="public-card-meta">
                     <strong>{money(fromPrice)}</strong>
                     {singleChoice ? (
@@ -955,10 +975,25 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
           </button>
         )}
         {!available(choice) && !added && (
-          <p className="public-preorder-note">
-            This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50%
-            deposit and we'll confirm your pickup or shipping date after payment.
-          </p>
+          <>
+            {/* Only shows when the batch actually carrying this colour has a
+                real date on file (api/v1/_shared.js's preorder object) —
+                never a guessed range. */}
+            {(choice?.preorder?.ships_in || choice?.preorder?.cutoff_date) && (
+              <p className="public-preorder-eta">
+                {choice.preorder.ships_in && (
+                  <span><strong>Estimated ready:</strong> {choice.preorder.ships_in}</span>
+                )}
+                {choice.preorder.cutoff_date && formatEta(choice.preorder.cutoff_date) && (
+                  <span>Order by {formatEta(choice.preorder.cutoff_date)} for this batch</span>
+                )}
+              </p>
+            )}
+            <p className="public-preorder-note">
+              This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50%
+              deposit and we'll confirm your pickup or shipping date after payment.
+            </p>
+          </>
         )}
         {added && (
           <Link to="../cart" className="public-secondary-link">View cart <ArrowRight size={13} /></Link>
@@ -1164,12 +1199,21 @@ function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
     );
   }
 
+  const hasPreorder = cart.some((line) => line.isPreorder);
+
   return (
     <main className="public-main">
       <section className="public-page-head public-page-head-compact">
         <span className="public-kicker">YOUR ORDER</span>
         <h1>Cart</h1>
       </section>
+
+      {hasPreorder && (
+        <div className="public-preorder-banner">
+          <span className="public-preorder-banner-badge">Pre-order</span>
+          <p>Your cart includes at least one pre-order item — it ships once restocked, same deposit and refund policy as any order.</p>
+        </div>
+      )}
 
       <div className="public-cart-layout">
         <motion.ul className="public-cart-lines" layout>
@@ -1412,6 +1456,9 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
     }
   };
 
+  const preorderLines = cart.filter((line) => line.isPreorder);
+  const hasPreorder = preorderLines.length > 0;
+
   return (
     <main className="public-main">
       <section className="public-page-head public-page-head-compact">
@@ -1419,6 +1466,39 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
         <span className="public-kicker">50% DEPOSIT · {money(total / 2)}</span>
         <h1>Checkout</h1>
       </section>
+
+      {/*
+        Only when the cart actually has a pre-order line — a mixed cart still
+        gets this, since the pre-order item still needs the same heads-up.
+        Each line's own real ships-in text (snapshotted at add-to-cart, same
+        source as the PDP note), never one guessed figure for the whole cart.
+      */}
+      {hasPreorder && (
+        <div className="public-preorder-banner">
+          <span className="public-preorder-banner-badge">Pre-order</span>
+          <div>
+            <p>
+              {preorderLines.length === 1
+                ? `${preorderLines[0].name}${preorderLines[0].color && preorderLines[0].color !== "Standard" ? ` (${preorderLines[0].color})` : ""} is a pre-order.`
+                : `${preorderLines.length} items in your cart are pre-orders.`}{" "}
+              Same 50% deposit and refund policy as any order — Paddle To Go confirms your pickup or
+              shipping date after payment.
+            </p>
+            {preorderLines.some((line) => line.preorder?.ships_in) && (
+              <ul className="public-preorder-banner-list">
+                {preorderLines
+                  .filter((line) => line.preorder?.ships_in)
+                  .map((line) => (
+                    <li key={line.key}>
+                      {line.name}
+                      {line.color && line.color !== "Standard" ? ` (${line.color})` : ""} — {line.preorder.ships_in}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       {error && <p className="public-error" ref={errorRef} tabIndex="-1">{error}</p>}
 
@@ -1598,7 +1678,12 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
             <input type="checkbox" checked={form.acknowledged} onChange={(event) => set("acknowledged", event.target.checked)} />
             <span>Placing this order is final — I've reviewed my items and accept that it's <b>non-refundable and non-cancellable</b>.</span>
           </label>
-          <button type="submit" className="public-primary" disabled={busy}>{busy ? "Placing order…" : `Place order · Pay ${money(total / 2)}`} <ArrowRight size={18} /></button>
+          <button type="submit" className="public-primary" disabled={busy}>
+            {busy
+              ? "Placing order…"
+              : `Place ${hasPreorder ? "pre-order" : "order"} · Pay ${money(total / 2)}`}{" "}
+            <ArrowRight size={18} />
+          </button>
         </form>
       </div>
     </main>

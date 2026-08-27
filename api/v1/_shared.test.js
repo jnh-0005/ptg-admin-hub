@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { corsHeaders, createOrder, publicPhoto, requireApiKey, positiveInt, validEmail } from "./_shared.js";
+import { corsHeaders, createOrder, publicCatalog, publicPhoto, requireApiKey, positiveInt, shipsInText, validEmail } from "./_shared.js";
 import { FIRST_INSERT_ID } from "../_db.js";
+
+const DAY_MS = 86_400_000;
+const isoDate = (offsetDays) => new Date(Date.now() + offsetDays * DAY_MS).toISOString().slice(0, 10);
 
 const BASE_ORDER_BODY = {
   customer: { name: "Buyer", email: "buyer@example.com", phone: "+639170000000" },
@@ -165,5 +168,84 @@ describe("createOrder idempotency", () => {
 
     const retry = await createOrder(fakeDb(0, { idempotency }), { ...BASE_ORDER_BODY, items: [{ product_id: 1, quantity: 1 }] }, key);
     expect(retry.status).toBe(201);
+  });
+});
+
+describe("shipsInText", () => {
+  it("rounds a real future expected_arrival to whole weeks", () => {
+    expect(shipsInText(isoDate(21))).toBe("Ships in ~3 weeks");
+    expect(shipsInText(isoDate(7))).toBe("Ships in ~1 week");
+  });
+  it("never reports a negative or zero week count", () => {
+    expect(shipsInText(isoDate(-5))).toBe("Shipping soon");
+    expect(shipsInText(isoDate(0))).toBe("Shipping soon");
+  });
+  it("returns null for a missing or invalid date rather than guessing", () => {
+    expect(shipsInText(null)).toBeNull();
+    expect(shipsInText("not-a-date")).toBeNull();
+  });
+});
+
+describe("publicCatalog preorder info", () => {
+  /** Routes each query by table name, like the fakeDb above but for the read side. */
+  function catalogDb({ products, variants, photos = [], batchRows = [] }) {
+    return {
+      async query(sql) {
+        if (/FROM inventory_variants/i.test(sql)) return { rows: variants };
+        if (/FROM inventory i/i.test(sql)) return { rows: products };
+        if (/FROM storefront_photos/i.test(sql)) return { rows: photos };
+        if (/FROM batch_items/i.test(sql)) return { rows: batchRows };
+        return { rows: [] };
+      },
+    };
+  }
+
+  it("attaches preorder info only to unavailable products/variants, never in-stock ones", async () => {
+    const catalog = await publicCatalog(
+      catalogDb({
+        products: [{ id: 1, name: "Franklin C45 ALW", sku: "PTG-C45", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
+        variants: [],
+        batchRows: [{ product_id: 1, variant_id: null, expected_arrival: isoDate(21), preorder_cutoff_date: isoDate(5) }],
+      }),
+    );
+    const [product] = catalog.products;
+    expect(product.availability).toBe("unavailable");
+    expect(product.preorder).toEqual({ ships_in: "Ships in ~3 weeks", ready_date: isoDate(21), cutoff_date: isoDate(5) });
+  });
+
+  it("picks the soonest-arriving open batch when more than one carries the item", async () => {
+    const catalog = await publicCatalog(
+      catalogDb({
+        products: [{ id: 1, name: "Franklin C45 ALW", sku: "PTG-C45", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
+        variants: [{ id: 10, inventory_id: 1, color: "Red", sku: null, selling_price_php: 0, photo_url: null, availability: "unavailable" }],
+        batchRows: [
+          { product_id: 1, variant_id: 10, expected_arrival: isoDate(40), preorder_cutoff_date: null },
+          { product_id: 1, variant_id: 10, expected_arrival: isoDate(10), preorder_cutoff_date: null },
+        ],
+      }),
+    );
+    expect(catalog.products[0].variants[0].preorder.ready_date).toBe(isoDate(10));
+  });
+
+  it("gives no preorder info when nothing real is on file, never a guess", async () => {
+    const catalog = await publicCatalog(
+      catalogDb({
+        products: [{ id: 1, name: "Franklin C45 ALW", sku: "PTG-C45", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
+        variants: [],
+        batchRows: [{ product_id: 1, variant_id: null, expected_arrival: null, preorder_cutoff_date: null }],
+      }),
+    );
+    expect(catalog.products[0].preorder).toBeNull();
+  });
+
+  it("never attaches preorder info to an item that's actually in stock", async () => {
+    const catalog = await publicCatalog(
+      catalogDb({
+        products: [{ id: 1, name: "Franklin C45 ALW", sku: "PTG-C45", category: "Paddle", sell_price: 12500, photo_url: null, availability: "available" }],
+        variants: [],
+        batchRows: [{ product_id: 1, variant_id: null, expected_arrival: isoDate(21), preorder_cutoff_date: null }],
+      }),
+    );
+    expect(catalog.products[0].preorder).toBeNull();
   });
 });

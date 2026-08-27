@@ -97,6 +97,20 @@ export default function Batches() {
     [batches],
   );
 
+  /**
+   * The soonest still-relevant pre-order cutoff, across every batch that can
+   * still take pre-orders (not yet Received or Cancelled). Cutoff genuinely
+   * varies per batch, so this is a live read across all of them, not a
+   * single setting — it just surfaces whichever one is coming up next.
+   */
+  const nextCutoff = useMemo(() => {
+    const todayStr = today();
+    return batches
+      .filter((b) => b.status !== "Received" && b.status !== "Cancelled")
+      .filter((b) => b.preorder_cutoff_date && b.preorder_cutoff_date >= todayStr)
+      .sort((a, b) => a.preorder_cutoff_date.localeCompare(b.preorder_cutoff_date))[0];
+  }, [batches]);
+
   const stickyEditing = useSticky(editing);
   const stickyDeleting = useSticky(deleting);
 
@@ -109,7 +123,20 @@ export default function Batches() {
             {inTransit > 0 ? `${inTransit} on the way` : "Nothing in transit"}
           </p>
         </div>
-        <div className="ml-auto flex shrink-0 gap-2">
+        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {/*
+            A placeholder at a glance: the soonest pre-order cutoff across
+            every batch still taking pre-orders, since cutoff varies per
+            batch and there's no single setting for it. Shows even with
+            nothing set yet, as a nudge to fill one in on a batch below.
+          */}
+          {batches.length > 0 && (
+            <Chip tone={nextCutoff ? "clay" : "gray"} dot={!!nextCutoff}>
+              {nextCutoff
+                ? `Next pre-order cutoff · ${formatDateShort(nextCutoff.preorder_cutoff_date)}`
+                : "No pre-order cutoff set"}
+            </Chip>
+          )}
           <button
             type="button"
             className="btn-quiet"
@@ -301,6 +328,7 @@ function BatchCard({ batch, items, consumables, rate, productsById, variantsById
           <p className="mt-0.5 break-words text-micro text-ink-3">
             {batch.supplier || "No supplier"}
             {batch.expected_arrival ? ` · arrives ${formatDateShort(batch.expected_arrival)}` : ""}
+            {batch.preorder_cutoff_date ? ` · order by ${formatDateShort(batch.preorder_cutoff_date)}` : ""}
           </p>
         </div>
         <Chip tone={TONE_FOR_STATUS[batch.status] || "gray"} dot>
@@ -594,6 +622,7 @@ function BatchTray({ open, batch, items, consumables, origin, onClose, onSave, o
     supplier: batch?.supplier ?? "",
     order_date: batch?.order_date ?? today(),
     expected_arrival: batch?.expected_arrival ?? "",
+    preorder_cutoff_date: batch?.preorder_cutoff_date ?? "",
     local_shipping_php: String(batch?.local_shipping_php ?? batch?.domestic_shipping_php ?? batch?.shipping_php ?? settings.default_shipping_php ?? DEFAULT_BATCH_SHIPPING),
     other_costs_php: String(batch?.other_costs_php ?? batch?.other_cost_php ?? 0),
     currency: batch?.currency ?? "VND",
@@ -919,6 +948,24 @@ function BatchTray({ open, batch, items, consumables, origin, onClose, onSave, o
               />
             </Field>
           </div>
+
+          {/*
+            Pre-order cutoff varies per batch, so it lives here, not as a
+            single global setting. Both this and expected arrival are
+            optional — the storefront only shows an "order by" / "ships in"
+            note on a paddle when the relevant batch actually has the date,
+            never a guess.
+          */}
+          <Field
+            label="Pre-order cutoff date"
+            hint="Shown on the storefront for any paddle sourced from this batch — the last day to order before it ships without them."
+          >
+            <Input
+              type="date"
+              value={form.preorder_cutoff_date || ""}
+              onChange={set("preorder_cutoff_date")}
+            />
+          </Field>
 
           {/* Shipment tracking, revealed only once the batch has actually left. */}
           <AnimatePresence initial={false}>
