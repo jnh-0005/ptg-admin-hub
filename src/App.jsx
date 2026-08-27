@@ -21,6 +21,7 @@ import {
 
 import { BottomBar, Logo, Rail } from "./components/Nav";
 import { Skeleton } from "./components/ui";
+import { AuthGate } from "./components/AuthGate";
 import { StoreProvider, useStore } from "./lib/store";
 import { spring } from "./lib/motion";
 import { M } from "./lib/calc";
@@ -231,26 +232,28 @@ const isPublicCatalog = (pathname) =>
 
 function Admin() {
   return (
-    <StoreProvider>
-      <BrowserRouter>
-        <Shell />
-        <Toaster
-          position="top-center"
-          offset={12}
-          toastOptions={{
-            style: {
-              background: "#FFFFFF",
-              border: "1px solid #E3E0DA",
-              borderRadius: "10px",
-              color: "#1C1A18",
-              fontFamily: '"Schibsted Grotesk Variable", system-ui, sans-serif',
-              fontSize: "14px",
-              boxShadow: "0 1px 2px rgba(28,26,24,0.04), 0 8px 24px rgba(28,26,24,0.08)",
-            },
-          }}
-        />
-      </BrowserRouter>
-    </StoreProvider>
+    <AuthGate>
+      <StoreProvider>
+        <BrowserRouter>
+          <Shell />
+          <Toaster
+            position="top-center"
+            offset={12}
+            toastOptions={{
+              style: {
+                background: "#FFFFFF",
+                border: "1px solid #E3E0DA",
+                borderRadius: "10px",
+                color: "#1C1A18",
+                fontFamily: '"Schibsted Grotesk Variable", system-ui, sans-serif',
+                fontSize: "14px",
+                boxShadow: "0 1px 2px rgba(28,26,24,0.04), 0 8px 24px rgba(28,26,24,0.08)",
+              },
+            }}
+          />
+        </BrowserRouter>
+      </StoreProvider>
+    </AuthGate>
   );
 }
 

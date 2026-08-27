@@ -1,16 +1,28 @@
 # PTG Admin Hub
 
-This archive contains the source code and public runtime assets for PTG Admin Hub.
+Mobile-first operations console for Paddle To Go — inventory, batches,
+orders, payments, invoices, and a storefront photo approval desk.
+
+## Stack
+
+Vite + React + Tailwind, deployed on GitHub → Vercel, backed by Supabase
+(Postgres + Auth). Originally built against folk's hosted SQLite transport;
+see [`docs/deployment-supabase-vercel.md`](docs/deployment-supabase-vercel.md)
+for what changed and why, and for the full setup checklist.
 
 ## Local development
 
 1. Install a supported Node.js version.
 2. Run `npm install`.
-3. Run `npm run dev` for local development.
-4. Run `npm run build` for a production build.
-5. Run `npm test` for automated tests.
+3. Copy `.env.example` to `.env.local` and fill in your Supabase project's
+   values (see the deployment doc).
+4. Run `npm run dev` for local development.
+5. Run `npm run build` for a production build.
+6. Run `npm test` for automated tests.
 
-The app uses Folk-hosted database endpoints at runtime. Deployment and environment-specific API credentials must be supplied through the hosting platform secret manager, never committed to this repository.
+Runtime secrets (`DATABASE_URL`, `SUPABASE_ANON_KEY`, etc.) must be supplied
+through `.env.local` locally or the Vercel project's environment variable
+settings in production — never committed to this repository.
 
 ## Safety notes
 

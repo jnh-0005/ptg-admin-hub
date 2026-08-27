@@ -1,30 +1,33 @@
 /**
- * folkdb, shared SQLite database for this app, hosted by folk.
+ * Database transport for this app, backed by Supabase Postgres through the
+ * /api/query serverless function (api/query.js). Originally this posted to
+ * folk's hosted __folkdata/query endpoint; the query/batch contract below is
+ * unchanged so nothing above this file needed to know the backend moved.
  *
- * Every visitor of this app talks to the SAME database, so data written by
- * one person is visible to everyone (guestbooks, RSVPs, leaderboards...).
- * The endpoint lives on this app's own origin, no API keys, no CORS.
- *
- * Usage:
- *   import { query, batch } from "./lib/folkdb";
- *   await query("CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, note TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)");
- *   await query("INSERT INTO entries (name, note) VALUES (?, ?)", ["alice", "hi!"]);
- *   const { rows } = await query("SELECT * FROM entries ORDER BY id DESC");
- *   // rows are objects keyed by column name: [{ id: 1, name: "alice", ... }]
+ * Every request carries the signed-in operator's Supabase session token —
+ * the API rejects anything without one, since this is the only access
+ * control the database has.
  */
+import { supabase } from "./supabaseAuth";
 
-// Resolves correctly on both <slug>.folk.com/ and /apphost/<slug>/
-// because the served index.html always carries a <base href> tag.
-const ENDPOINT = new URL("__folkdata/query", document.baseURI).toString();
+const ENDPOINT = "/api/query";
 
 async function send(statements) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   const res = await fetch(ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
     body: JSON.stringify({ statements }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    if (res.status === 401) await supabase.auth.signOut();
     throw new Error(data.error || `database request failed (${res.status})`);
   }
   return data.results.map((r) => {
@@ -51,8 +54,8 @@ export async function query(sql, args = []) {
 }
 
 /**
- * Run several statements in one round trip (max 10). Each entry is
- * { sql, args? }. Returns an array of results in the same order.
+ * Run several statements in one round trip (max 10), inside one transaction.
+ * Each entry is { sql, args? }. Returns an array of results in the same order.
  */
 export async function batch(statements) {
   return send(statements);
