@@ -41,6 +41,16 @@ export default async function handler(req, res) {
     const results = await runStatements(statements);
     res.status(200).json({ results });
   } catch (err) {
+    // Previously silent: the client only ever saw a generic "database
+    // error" toast, and nothing was logged server-side, so a real failure
+    // here was undebuggable without reproducing it against a live db
+    // connection. Log the actual error (and which statements triggered it,
+    // sql only — never args, which can carry customer PII) so Vercel's
+    // function logs show what actually broke.
+    console.error("query error:", err?.message || err, {
+      statementCount: statements.length,
+      sqlTexts: statements.map((s) => String(s.sql).replace(/\s+/g, " ").trim()),
+    });
     res.status(400).json({ error: err.message || "database error" });
   }
 }
