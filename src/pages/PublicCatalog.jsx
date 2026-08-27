@@ -1501,22 +1501,26 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
           items={[
             {
               title: "Details",
-              rows: [
-                { label: "Brand", value: product.brand },
-                ...(product.category ? [{ label: "Category", value: product.category }] : []),
-                ...(choice?.sku ? [{ label: "SKU", value: choice.sku }] : []),
-                { label: "Deposit to reserve", value: money((choice?.price || 0) / 2) },
-              ],
+              body: (
+                <dl className="public-accordion-dl">
+                  <div><dt>Brand</dt><dd>{product.brand}</dd></div>
+                  {product.category && <div><dt>Category</dt><dd>{product.category}</dd></div>}
+                  {choice?.sku && <div><dt>SKU</dt><dd>{choice.sku}</dd></div>}
+                  <div><dt>Deposit to reserve</dt><dd>{money((choice?.price || 0) / 2)}</dd></div>
+                </dl>
+              ),
             },
             ...(spec
               ? [
                   {
                     title: "Technology",
-                    rows: [
-                      { label: "Core", value: spec.core },
-                      { label: "Surface", value: spec.surface },
-                      { label: "Weight", value: spec.weight },
-                    ],
+                    body: (
+                      <dl className="public-accordion-dl">
+                        <div><dt>Core</dt><dd>{spec.core}</dd></div>
+                        <div><dt>Surface</dt><dd>{spec.surface}</dd></div>
+                        <div><dt>Weight</dt><dd>{spec.weight}</dd></div>
+                      </dl>
+                    ),
                   },
                 ]
               : []),
@@ -1539,22 +1543,47 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
 }
 
 /** A collapsed-by-default disclosure list — replaces the old always-open detail cards. First section starts open so the page isn't entirely blank specs. */
-function Accordion({ items }) {
+/**
+ * A single-open accordion with a real open/close motion (height + fade),
+ * not an instant snap — shared by the product page's spec sections and the
+ * FAQ page. `items[].body` is caller-provided content: a `<dl>` of spec
+ * rows there, a plain paragraph here. Only one section open at a time,
+ * first one open by default; set `openIndex` to -1 to start fully closed.
+ */
+function Accordion({ items, defaultOpenIndex = 0 }) {
+  const [openIndex, setOpenIndex] = useState(defaultOpenIndex);
+  const reduce = useReducedMotion();
   return (
     <div className="public-accordion">
-      {items.map((item, index) => (
-        <details className="public-accordion-item" key={item.title} open={index === 0}>
-          <summary>
-            {item.title}
-            <Plus size={14} className="public-accordion-icon" />
-          </summary>
-          <dl className="public-accordion-body">
-            {item.rows.map((row) => (
-              <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>
-            ))}
-          </dl>
-        </details>
-      ))}
+      {items.map((item, index) => {
+        const isOpen = openIndex === index;
+        return (
+          <div className="public-accordion-item" key={item.title}>
+            <button
+              type="button"
+              className="public-accordion-summary"
+              onClick={() => setOpenIndex((current) => (current === index ? -1 : index))}
+              aria-expanded={isOpen}
+            >
+              {item.title}
+              <Plus size={14} className={`public-accordion-icon ${isOpen ? "is-open" : ""}`} />
+            </button>
+            <AnimatePresence initial={false}>
+              {isOpen && (
+                <motion.div
+                  className="public-accordion-panel"
+                  initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                  animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+                  exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                  transition={spring}
+                >
+                  <div className="public-accordion-body">{item.body}</div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2266,59 +2295,82 @@ function CatalogSkeleton() {
  * PAYMENT_METHODS, PTG_MESSENGER_URL) rather than inventing new terms.
  */
 function FaqPage() {
+  const paymentList = PAYMENT_METHODS.map((m) => m.label).join(", ");
   return (
     <main className="public-main">
       <section className="public-page-head public-page-head-compact">
         <h1>FAQs</h1>
-        <p>How reserving a paddle from Paddle To Go works.</p>
+        <p>Everything worth knowing before you reserve a paddle.</p>
       </section>
 
       <Accordion
         items={[
           {
-            title: "How do I reserve a paddle?",
-            rows: [
-              { label: "Step 1", value: "Add a paddle and colour to your cart" },
-              { label: "Step 2", value: `Pay a 50% deposit via ${PAYMENT_METHODS.map((m) => m.label).join(", ")}` },
-              { label: "Step 3", value: "Send your payment proof on Messenger" },
-            ],
+            title: "Do you sell authentic paddles?",
+            body: <p>Yes. All paddles sold by Paddle To Go are sourced from our trusted suppliers.</p>,
           },
           {
-            title: "What if my colour shows Pre-order?",
-            rows: [
-              { label: "What it means", value: "That colour is out of this batch, not sold out for good" },
-              { label: "What happens", value: "Reserve it now with the same 50% deposit; PTG confirms your pickup or shipping date once it's back in stock" },
-            ],
+            title: "Do you have paddles on hand?",
+            body: (
+              <p>
+                Some models are available on hand, while others are available through pre-order. Check the product
+                listing or message us for availability.
+              </p>
+            ),
           },
           {
-            title: "Can I cancel or get a refund?",
-            rows: [
-              { label: "Policy", value: "No — every order is final, non-refundable and non-cancellable" },
-              { label: "When you agree to this", value: "At checkout, before placing the order" },
-            ],
+            title: "How does pre-order work?",
+            body: (
+              <p>
+                A 50% deposit is required to secure your pre-order. Once your paddle arrives and is checked by
+                Paddle To Go, you'll settle the remaining 50% before release or delivery.
+              </p>
+            ),
           },
           {
-            title: "Pickup or shipping?",
-            rows: [
-              { label: "Pickup", value: "Arranged after PTG reviews your order" },
-              { label: "Shipping", value: "Available; the fee is confirmed after review, not charged upfront" },
-            ],
+            title: "When will my pre-order arrive?",
+            body: (
+              <p>
+                Estimated arrival is usually 2–3 weeks after the pre-order cutoff, but timelines may vary due to
+                cargo, customs, and logistics.
+              </p>
+            ),
           },
           {
-            title: "How do I contact Paddle To Go?",
-            rows: [
-              {
-                label: "Messenger",
-                value: (
-                  <a href={PTG_MESSENGER_URL} target="_blank" rel="noreferrer">
-                    Message us <ArrowRight size={12} />
-                  </a>
-                ),
-              },
-            ],
+            title: "What payment methods do you accept?",
+            body: <p>We accept {paymentList}.</p>,
+          },
+          {
+            title: "Do you offer shipping?",
+            body: (
+              <p>
+                Yes. Orders can be shipped nationwide. For local delivery, we use LBC COP. Shipping fees are
+                separate from the paddle price.
+              </p>
+            ),
+          },
+          {
+            title: "Can I request a specific paddle or colour?",
+            body: <p>Yes! If the model or colour isn't currently listed, send us a message and we'll check if it can be ordered.</p>,
+          },
+          {
+            title: "What if my paddle arrives with a defect or damage?",
+            body: (
+              <p>
+                All pre-order paddles are checked by Paddle To Go upon arrival before being released to the buyer.
+                If there's an issue, please contact us immediately so we can assist.
+              </p>
+            ),
           },
         ]}
       />
+
+      <p className="public-faq-contact">
+        Still have a question?{" "}
+        <a href={PTG_MESSENGER_URL} target="_blank" rel="noreferrer">
+          Message us on Messenger <ArrowRight size={12} />
+        </a>
+      </p>
     </main>
   );
 }
