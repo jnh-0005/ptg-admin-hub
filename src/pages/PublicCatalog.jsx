@@ -496,18 +496,24 @@ function Layout({ cartCount, compareCount = 0 }) {
 
       <AnimatePresence>
         {compareCount > 0 && (
-          <motion.div
-            className="public-compare-bar"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 16 }}
-            transition={spring}
-          >
-            <span>{compareCount} paddle{compareCount === 1 ? "" : "s"} selected</span>
-            <Link to="compare" className="public-compare-bar-link">
-              Compare <ArrowRight size={14} />
-            </Link>
-          </motion.div>
+          // The anchor (fixed + translateX(-50%)) does the horizontal
+          // centering and is never animated; framer-motion's own inline
+          // transform lives only on the child it slides up, so the two
+          // transforms never fight over the same element.
+          <div className="public-compare-bar-anchor">
+            <motion.div
+              className="public-compare-bar"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={spring}
+            >
+              <span>{compareCount} paddle{compareCount === 1 ? "" : "s"} selected</span>
+              <Link to="compare" className="public-compare-bar-link">
+                Compare <ArrowRight size={14} />
+              </Link>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

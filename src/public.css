@@ -105,12 +105,29 @@
 .public-quick-add.is-added{background:var(--teal)}
 .public-quick-add:disabled{background:var(--line);color:var(--muted);box-shadow:none}
 .public-view{display:flex;align-items:center;gap:4px;margin-top:9px;color:var(--teal);font-size:9px;font-weight:700}
-.public-compare-toggle{display:flex;width:fit-content;align-items:center;gap:3px;margin:8px auto 0;padding:3px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:8px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
-.public-compare-toggle.is-active{border-color:var(--teal);background:#eff8f6;color:var(--teal)}
-.public-compare-toggle:disabled{opacity:.4}
+/*
+  button.public-compare-toggle (class+type, specificity 0,1,1), not
+  .public-compare-toggle alone (0,1,0) — the global reset above
+  (.public-shell button{font:inherit}, also 0,1,1) otherwise wins the tie by
+  source order and silently resets this button back to the page's base font
+  size, which is exactly what shipped the first time: padding applied
+  correctly, font-size quietly didn't.
+*/
+button.public-compare-toggle{display:flex;width:fit-content;align-items:center;gap:3px;margin:8px auto 0;padding:3px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:8px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+button.public-compare-toggle.is-active{border-color:var(--teal);background:#eff8f6;color:var(--teal)}
+button.public-compare-toggle:disabled{opacity:.4}
 
 /* ── Compare bar + compare page ────────────────────────────────────── */
-.public-compare-bar{position:fixed;left:50%;bottom:16px;z-index:20;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 16px;border-radius:999px;background:var(--forest);color:#fff;box-shadow:0 12px 32px #05140f4d;transform:translateX(-50%)}
+/*
+  The centering lives on this outer anchor, never on .public-compare-bar
+  itself — framer-motion writes its own inline `transform` on the element it
+  animates (the slide-up y offset) and an inline style always wins over a
+  stylesheet rule, so a translateX(-50%) placed on the animated element
+  itself gets silently overwritten the moment the animation runs. This
+  wrapper is never animated, so its CSS transform survives.
+*/
+.public-compare-bar-anchor{position:fixed;left:50%;bottom:16px;z-index:20;transform:translateX(-50%)}
+.public-compare-bar{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 16px;border-radius:999px;background:var(--forest);color:#fff;box-shadow:0 12px 32px #05140f4d}
 .public-compare-bar span{font-size:11px;font-weight:700;white-space:nowrap}
 .public-compare-bar-link{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:#fff;color:var(--forest);font-size:11px;font-weight:800;white-space:nowrap}
 .public-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
