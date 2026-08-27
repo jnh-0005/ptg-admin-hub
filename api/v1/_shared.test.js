@@ -129,6 +129,63 @@ describe("createOrder pre-order rule", () => {
   });
 });
 
+describe("createOrder id-space collision", () => {
+  // product_id and variant_id are separate id spaces that both happen to be
+  // small sequential integers, so a variant can share its numeric id with an
+  // unrelated product (e.g. variant id 1 == some other product's id 1). The
+  // query joins inventory to inventory_variants and can return rows for both
+  // matches in one result set; the lookup must keep them in separate keyed
+  // maps, or the wrong row can silently win and reject (or misprice) a
+  // perfectly valid, in-stock item.
+  function collidingDb(variantQuantity) {
+    return {
+      async query(sql, args = []) {
+        if (/api_idempotency/i.test(sql)) {
+          if (/^\s*INSERT/i.test(sql)) return { rows: [], affectedRows: 1 };
+          if (/^\s*SELECT/i.test(sql)) return { rows: [] };
+          if (/^\s*UPDATE/i.test(sql) || /^\s*DELETE/i.test(sql)) return { affectedRows: 1 };
+        }
+        if (/^\s*SELECT/i.test(sql)) {
+          return {
+            rows: [
+              // Unrelated product whose id (1) collides with the requested variant_id below.
+              { product_id: 1, name: "Franklin C45 ALW", unit_cost: 0, sell_price: 12500, product_quantity: 5, variant_id: null, color: null, variant_active: null, variant_quantity: null, selling_price_php: null },
+              // The actually-requested variant, on a different product (14).
+              { product_id: 14, name: "Sypik Triton 5", unit_cost: 0, sell_price: 9800, product_quantity: 0, variant_id: 1, color: "Jade Mist", variant_active: 1, variant_quantity: variantQuantity, selling_price_php: 9800 },
+            ],
+          };
+        }
+        return { lastInsertId: 1 };
+      },
+      async batch(statements) {
+        let firstInsertId = null;
+        return statements.map((stmt, i) => { if (i === 0) firstInsertId = 1; return { lastInsertId: firstInsertId }; });
+      },
+    };
+  }
+
+  it("orders the requested variant, not an unrelated product whose id happens to match", async () => {
+    const res = await createOrder(collidingDb(3), { ...BASE_ORDER_BODY, items: [{ variant_id: 1, quantity: 1 }] }, idempotencyKey());
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.order.total_php).toBe(9800); // Sypik Triton 5's price, not Franklin's 12500
+  });
+
+  it("still rejects a genuinely inactive variant that happens to share an id with another product", async () => {
+    const db = collidingDb(3);
+    const originalQuery = db.query.bind(db);
+    db.query = async (sql, args) => {
+      const result = await originalQuery(sql, args);
+      if (Array.isArray(result.rows) && result.rows.some((r) => r.variant_id === 1)) {
+        result.rows = result.rows.map((r) => (r.variant_id === 1 ? { ...r, variant_active: 0 } : r));
+      }
+      return result;
+    };
+    const res = await createOrder(db, { ...BASE_ORDER_BODY, items: [{ variant_id: 1, quantity: 1 }] }, idempotencyKey());
+    expect(res.status).toBe(409);
+  });
+});
+
 describe("createOrder idempotency", () => {
   it("replays the cached response instead of creating a second order for the same key", async () => {
     const idempotency = new Map();

@@ -228,6 +228,14 @@ async function buildOrder(db, body) {
   if (requestedIds.some((x) => !Number.isInteger(x) || x <= 0) || new Set(requestedIds).size !== requestedIds.length) {
     return apiError(422, "validation_error", "each item needs a unique positive product_id or variant_id");
   }
+  // product_id and variant_id are separate id spaces that both happen to be
+  // small sequential integers, so the same number (e.g. 1) routinely names
+  // both a real product and an unrelated variant. Keep every requested id in
+  // whichever space it was actually sent under, and query/key each space
+  // separately below — merging them into one shared-number lookup let an
+  // unrelated row silently win and reject a perfectly valid, in-stock item.
+  const productIds = body.items.filter((x) => !x.variant_id).map((x) => Number(x.product_id));
+  const variantIds = body.items.filter((x) => x.variant_id).map((x) => Number(x.variant_id));
   // inventory has no `active` column in this schema — archived products are
   // marked with a `[archived]` prefix in `notes` instead (see schema.js),
   // the same rule publicCatalog() above already applies.
@@ -235,14 +243,19 @@ async function buildOrder(db, body) {
     v.id AS variant_id, v.color, v.active AS variant_active, v.quantity AS variant_quantity, v.selling_price_php
     FROM inventory i LEFT JOIN inventory_variants v ON v.inventory_id = i.id
     WHERE COALESCE(i.notes, '') NOT LIKE '[archived]%' AND COALESCE(i.category, '') <> 'Add-on'
-      AND (i.id IN (${requestedIds.filter((x) => x).map(() => "?").join(",")}) OR v.id IN (${requestedIds.map(() => "?").join(",")}))`, [...requestedIds, ...requestedIds]);
-  const byKey = new Map();
-  for (const row of rows.rows) { byKey.set(Number(row.variant_id || row.product_id), row); }
+      AND (i.id IN (${productIds.length ? productIds.map(() => "?").join(",") : "NULL"}) OR v.id IN (${variantIds.length ? variantIds.map(() => "?").join(",") : "NULL"}))`, [...productIds, ...variantIds]);
+  const productSet = new Set(productIds);
+  const variantSet = new Set(variantIds);
+  const byProductId = new Map();
+  const byVariantId = new Map();
+  for (const row of rows.rows) {
+    if (row.variant_id != null && variantSet.has(Number(row.variant_id))) byVariantId.set(Number(row.variant_id), row);
+    if (row.variant_id == null && productSet.has(Number(row.product_id))) byProductId.set(Number(row.product_id), row);
+  }
   const lines = [];
   for (const input of body.items) {
-    const key = Number(input.variant_id || input.product_id);
-    const row = byKey.get(key);
-    if (!row || (input.variant_id && row.variant_id !== key) || (input.variant_id && row.variant_active !== 1)) return apiError(409, "item_unavailable", "one or more selected items are no longer available");
+    const row = input.variant_id ? byVariantId.get(Number(input.variant_id)) : byProductId.get(Number(input.product_id));
+    if (!row || (input.variant_id && row.variant_active !== 1)) return apiError(409, "item_unavailable", "one or more selected items are no longer available");
     if (!positiveInt(input.quantity)) return apiError(422, "validation_error", "quantity must be an integer from 1 to 20");
     const available = input.variant_id ? Number(row.variant_quantity || 0) : Number(row.product_quantity || 0);
     // Zero on hand is a pre-order, not a dead end — PTG imports every paddle
