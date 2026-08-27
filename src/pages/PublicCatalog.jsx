@@ -1096,7 +1096,14 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
   return (
     <>
       <section className="public-hero">
-        <img className="public-hero-bg" src="/images/ptg-court-banner-v2.png" alt="Paddle To Go — Cagayan de Oro, Philippines" />
+        {/* Desktop gets the newer banner photo; mobile keeps the original —
+            a <picture>/<source> swap, not a JS breakpoint check, so there's
+            no flash of the wrong image and no extra render logic. 960px
+            matches every other desktop-only treatment already in this file. */}
+        <picture>
+          <source media="(min-width: 960px)" srcSet="/images/ptg-hero-desktop.png" />
+          <img className="public-hero-bg" src="/images/ptg-court-banner-v2.png" alt="Paddle To Go — Cagayan de Oro, Philippines" />
+        </picture>
         <div className="public-hero-scrim" />
         <Reveal as="div" className="public-hero-text">
           <h1>Reserve your next paddle.</h1>
