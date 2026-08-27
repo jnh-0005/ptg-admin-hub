@@ -368,6 +368,7 @@ export default function PublicCatalog() {
           : [...current, productId],
     );
   };
+  const clearCompare = () => setCompareIds([]);
 
   /**
    * Adds `quantity` of one product+colour to the cart, merging with any
@@ -427,7 +428,7 @@ export default function PublicCatalog() {
             <Route path="paddle/:id" element={<ProductPage addToCart={addToCart} />} />
             <Route
               path="compare"
-              element={<ComparePage compareIds={compareIds} toggleCompare={toggleCompare} />}
+              element={<ComparePage compareIds={compareIds} toggleCompare={toggleCompare} clearCompare={clearCompare} />}
             />
             <Route
               path="cart"
@@ -477,6 +478,10 @@ function BackToTop() {
 
 /** Header + footer chrome shared by every storefront route; the routed page fills the middle. */
 function Layout({ cartCount, compareCount = 0 }) {
+  const location = useLocation();
+  // No point telling someone "N paddles selected, go compare" while they're
+  // already looking at the compare page.
+  const onComparePage = location.pathname.endsWith("/compare");
   return (
     <>
       <header className="public-nav">
@@ -495,7 +500,7 @@ function Layout({ cartCount, compareCount = 0 }) {
       <Outlet context={{}} />
 
       <AnimatePresence>
-        {compareCount > 0 && (
+        {compareCount > 0 && !onComparePage && (
           // The anchor (fixed + translateX(-50%)) does the horizontal
           // centering and is never animated; framer-motion's own inline
           // transform lives only on the child it slides up, so the two
@@ -922,7 +927,7 @@ function ProductPage({ addToCart }) {
 }
 
 /** Side-by-side compare view for whatever's in the compare tray — real fields only (price, brand, colour, stock state), never fabricated specs. */
-function ComparePage({ compareIds, toggleCompare }) {
+function ComparePage({ compareIds, toggleCompare, clearCompare }) {
   const { products, status } = useShopData();
   const selected = compareIds
     .map((id) => products.find((product) => product.id === id))
@@ -961,7 +966,12 @@ function ComparePage({ compareIds, toggleCompare }) {
     <main className="public-main">
       <section className="public-page-head public-page-head-compact">
         <span className="public-kicker">COMPARE</span>
-        <h1>{selected.length} paddle{selected.length === 1 ? "" : "s"}</h1>
+        <div className="public-compare-heading-row">
+          <h1>{selected.length} paddle{selected.length === 1 ? "" : "s"}</h1>
+          <button type="button" className="public-compare-clear" onClick={clearCompare}>
+            <Trash size={13} /> Clear all
+          </button>
+        </div>
       </section>
 
       <div className="public-compare-grid">
