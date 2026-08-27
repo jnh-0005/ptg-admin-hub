@@ -10,6 +10,7 @@ import {
   Plus,
   Receipt,
   ShareNetwork,
+  ShieldCheck,
   Trash,
   Truck,
   Wallet,
@@ -384,6 +385,8 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
   const navigate = useNavigate();
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [confirmVerifyPayment, setConfirmVerifyPayment] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [trackingEvent, setTrackingEvent] = useState(null); // "new" | event
   const [deletingEvent, setDeletingEvent] = useState(null);
   const [trackOrigin, captureTrackOrigin] = useOrigin();
@@ -426,6 +429,30 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
       toast.error("Could not complete the order. Try again.");
     } finally {
       setCompleting(false);
+    }
+  };
+
+  const paymentVerified = order.status === "Paid" || order.status === "Completed";
+
+  /**
+   * The explicit "I looked at the proof, the money is actually in the
+   * account" step — separate from "Complete order". This only moves status
+   * to Paid; it never touches stock. Stock still only moves when the order
+   * is Completed (fulfilled), same as before — payment being verified and a
+   * paddle actually leaving the shelf are two different real-world events,
+   * and a pre-order can sit Paid for a while before there's anything to
+   * hand over.
+   */
+  const verifyPayment = async () => {
+    setVerifyingPayment(true);
+    try {
+      await commit((db) => db.setOrderStatus(order, "Paid"));
+      haptic([10, 24]);
+      toast.success(`${order.order_number} marked paid — payment verified`);
+    } catch {
+      toast.error("Could not mark the payment verified. Try again.");
+    } finally {
+      setVerifyingPayment(false);
     }
   };
 
@@ -513,14 +540,33 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
                 {order.fulfillment_method && <p>{order.fulfillment_method}</p>}
                 {order.acknowledgment && <p>Terms acknowledged</p>}
                 {order.payment_proof_url && (
-                  <a
-                    href={order.payment_proof_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex min-h-10 items-center font-medium text-cobalt underline decoration-cobalt/25 underline-offset-2"
-                  >
-                    View payment proof
-                  </a>
+                  <div className="flex flex-wrap items-center gap-2.5 pt-0.5">
+                    <a
+                      href={order.payment_proof_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex min-h-10 items-center font-medium text-cobalt underline decoration-cobalt/25 underline-offset-2"
+                    >
+                      View payment proof
+                    </a>
+                    {paymentVerified ? (
+                      <Chip tone="teal" dot>
+                        Payment verified
+                      </Chip>
+                    ) : (
+                      order.status !== "Cancelled" && (
+                        <button
+                          type="button"
+                          className="btn-quiet min-h-9 shrink-0 px-3 text-eta"
+                          disabled={verifyingPayment}
+                          onClick={() => setConfirmVerifyPayment(true)}
+                        >
+                          <ShieldCheck size={15} weight="fill" />
+                          <span>{verifyingPayment ? "Verifying…" : "Approve payment"}</span>
+                        </button>
+                      )
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -949,6 +995,16 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
         confirmLabel="Complete it"
         tone="primary"
         onConfirm={complete}
+      />
+
+      <ConfirmTray
+        open={confirmVerifyPayment}
+        onClose={() => setConfirmVerifyPayment(false)}
+        title="Approve this payment?"
+        body="Only confirm this after you've actually checked the proof against what came into your account. This marks the order Paid — it does not touch stock; stock still only moves when you complete the order."
+        confirmLabel="Approve payment"
+        tone="primary"
+        onConfirm={verifyPayment}
       />
     </>
   );
