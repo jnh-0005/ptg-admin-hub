@@ -41,9 +41,9 @@ const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 const PROOF_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 // Public checkout payment choices intentionally stay buyer-facing and reference-style.
 const PAYMENT_METHODS = [
-  { id: "maribank", label: "MariBank", image: "/images/payment-maribank.png" },
-  { id: "paypal", label: "PayPal", image: "/images/payment-paytm.png" },
-  { id: "instapay", label: "InstaPay", image: "/images/payment-instapay.png" },
+  { id: "maribank", label: "MariBank", image: "/images/payment-maribank.jpg" },
+  { id: "gcash", label: "GCash", image: "/images/payment-gcash.jpg" },
+  { id: "gotyme", label: "GoTyme Bank", image: "/images/payment-gotyme.jpg" },
 ];
 const CART_STORAGE_KEY = "ptg-public-cart-v2";
 const COMPARE_STORAGE_KEY = "ptg-public-compare-v1";
