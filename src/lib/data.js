@@ -537,21 +537,46 @@ function stockDelta(before, after, sign = 1) {
   return [...delta.values()].filter((d) => d.n !== 0);
 }
 
-async function applyStock(deltas) {
-  if (!deltas.length) return;
-  await dbBatch(
-    deltas.map((d) =>
-      d.variant_id
-        ? {
-            sql: "UPDATE inventory_variants SET quantity = MAX(0, quantity + ?) WHERE id = ?",
-            args: [Math.round(d.n), d.variant_id],
-          }
-        : {
-            sql: "UPDATE inventory SET quantity = MAX(0, quantity + ?) WHERE id = ?",
-            args: [Math.round(d.n), d.product_id],
-          },
-    ),
+// Pure builder, no I/O — lets a caller fold these UPDATEs into a larger
+// dbBatch() call it controls (saveOrder does, below) instead of always
+// running them as their own separate transaction.
+function stockUpdateStatements(deltas) {
+  return (deltas || []).map((d) =>
+    d.variant_id
+      ? {
+          sql: "UPDATE inventory_variants SET quantity = MAX(0, quantity + ?) WHERE id = ?",
+          args: [Math.round(d.n), d.variant_id],
+        }
+      : {
+          sql: "UPDATE inventory SET quantity = MAX(0, quantity + ?) WHERE id = ?",
+          args: [Math.round(d.n), d.product_id],
+        },
   );
+}
+
+async function applyStock(deltas) {
+  const statements = stockUpdateStatements(deltas);
+  if (!statements.length) return;
+  await dbBatch(statements);
+}
+
+// Pure builder — see stockUpdateStatements above for why this is split out.
+function movementInsertStatements(rows) {
+  const clean = (rows || []).filter((r) => Math.round(M(r.quantity)) !== 0);
+  return clean.map((r) => ({
+    sql: `INSERT INTO stock_movements (inventory_id, variant_id, batch_id, movement_type, quantity, reference_type, reference_id, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      r.inventory_id ?? null,
+      r.variant_id ?? null,
+      r.batch_id ?? null,
+      r.movement_type,
+      Math.round(M(r.quantity)),
+      r.reference_type ?? null,
+      r.reference_id ?? null,
+      r.notes?.trim() || null,
+    ],
+  }));
 }
 
 /**
@@ -560,24 +585,9 @@ async function applyStock(deltas) {
  * received batch or a completed order never writes a second receipt.
  */
 export async function logMovements(rows) {
-  const clean = (rows || []).filter((r) => Math.round(M(r.quantity)) !== 0);
-  if (!clean.length) return;
-  await dbBatch(
-    clean.map((r) => ({
-      sql: `INSERT INTO stock_movements (inventory_id, variant_id, batch_id, movement_type, quantity, reference_type, reference_id, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        r.inventory_id ?? null,
-        r.variant_id ?? null,
-        r.batch_id ?? null,
-        r.movement_type,
-        Math.round(M(r.quantity)),
-        r.reference_type ?? null,
-        r.reference_id ?? null,
-        r.notes?.trim() || null,
-      ],
-    })),
-  );
+  const statements = movementInsertStatements(rows);
+  if (!statements.length) return;
+  await dbBatch(statements);
 }
 
 /** Apply a set of deltas and record what they were, in one go. */
@@ -607,14 +617,17 @@ function freebieDelta(before, after) {
   return [...delta.entries()].filter(([, n]) => n !== 0);
 }
 
+// Pure builder — see stockUpdateStatements above for why this is split out.
+function freebieStockUpdateStatements(deltas) {
+  return (deltas || []).map(([id, n]) => ({
+    sql: "UPDATE freebies SET quantity = MAX(0, quantity + ?) WHERE id = ?",
+    args: [Math.round(n), id],
+  }));
+}
+
 async function applyFreebieStock(deltas, { reference_id, notes, movement_type } = {}) {
   if (!deltas.length) return;
-  await dbBatch(
-    deltas.map(([id, n]) => ({
-      sql: "UPDATE freebies SET quantity = MAX(0, quantity + ?) WHERE id = ?",
-      args: [Math.round(n), id],
-    })),
-  );
+  await dbBatch(freebieStockUpdateStatements(deltas));
   // Freebie stock leaves an audit trail too, tagged so it is filterable apart
   // from paddles: inventory_id is null because a freebie is not an inventory row.
   await logMovements(
@@ -978,34 +991,42 @@ export async function saveOrder({ id, orderRow, items, freebies }) {
     lines.length > 1 ? "Batch" : "Individual",
   ];
 
-  let orderId = id;
-  if (id) {
-    await db(
-      `UPDATE orders SET order_number = ?, order_date = ?, customer_name = ?, customer = ?, customer_email = ?, customer_phone = ?, shipping_address = ?, channel = ?, status = ?,
-              payment_requirement = ?, shipping_income_php = ?, discount_php = ?, notes = ?,
-              carrier = ?, tracking_number = ?, fulfillment_status = ?, shipped_date = ?,
-              sale_total = ?, product_cost = ?, shipping_cost = ?, freebie_cost = ?, profit = ?, order_type = ?
-        WHERE id = ?`,
-      [...args, id],
-    );
-  } else {
-    const res = await db(
-      `INSERT INTO orders (order_number, order_date, customer_name, customer, customer_email, customer_phone, shipping_address, channel, status,
-              payment_requirement, shipping_income_php, discount_php, notes,
-              carrier, tracking_number, fulfillment_status, shipped_date,
-              sale_total, product_cost, shipping_cost, freebie_cost, profit, order_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args,
-    );
-    orderId = res.lastInsertId;
+  const wasCompleted = priorStatus === "Completed";
+  const isCompleted = status === "Completed";
+  const label = String(orderRow.order_number || "").trim();
+  const first = !wasCompleted && isCompleted;
+
+  let deltas = [];
+  let freebieDeltas = [];
+  if (first) {
+    deltas = stockDelta([], lines, -1);
+    freebieDeltas = freebieDelta([], gifts);
+  } else if (wasCompleted && !isCompleted) {
+    deltas = stockDelta(priorItems, [], -1);
+    freebieDeltas = freebieDelta(priorFreebies, []);
+  } else if (wasCompleted && isCompleted) {
+    // Re-saving a completed order only moves the DIFFERENCE, so a paddle is
+    // never deducted twice and the ledger never grows a phantom second sale.
+    deltas = stockDelta(priorItems, lines, -1);
+    freebieDeltas = freebieDelta(priorFreebies, gifts);
   }
 
-  await dbBatch([
+  // Everything below rides in ONE dbBatch() call per branch — a real
+  // transaction (see runStatements in api/_db.js) — together with the
+  // order row's own UPDATE/INSERT. This used to be several separate
+  // sequential awaits: the order row (with its new status) committed on
+  // its own, THEN items were resynced, THEN stock moved. If a later step
+  // failed for any reason, the order was left permanently stuck reporting
+  // "Completed" with stock never decremented — and unrecoverable by simply
+  // retrying "Complete order" again, because the retry would then already
+  // read priorStatus === "Completed" and compute a zero net delta against
+  // itself (see `first` above). Committing the status change and its stock
+  // consequence together means a failure anywhere rolls the whole
+  // transition back, so a retry sees the true prior state and applies the
+  // real delta instead of silently doing nothing.
+  const itemAndStockStatements = (orderId) => [
     { sql: "DELETE FROM order_items WHERE order_id = ?", args: [orderId] },
     { sql: "DELETE FROM order_freebies WHERE order_id = ?", args: [orderId] },
-  ]);
-
-  const inserts = [
     ...lines.map((l) => ({
       sql: `INSERT INTO order_items (order_id, inventory_id, variant_id, product_name, quantity, unit_price, unit_cost)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -1030,39 +1051,63 @@ export async function saveOrder({ id, orderRow, items, freebies }) {
         Math.max(0, M(f.unit_cost)),
       ],
     })),
+    ...stockUpdateStatements(deltas),
+    ...movementInsertStatements(
+      deltas.map((d) => ({
+        inventory_id: d.product_id,
+        variant_id: d.variant_id,
+        movement_type: first ? "Sale" : "Correction",
+        quantity: d.n,
+        reference_type: "order",
+        reference_id: orderId,
+        notes: first ? `Sold on ${label}` : `${label} edited after completion`,
+      })),
+    ),
+    ...freebieStockUpdateStatements(freebieDeltas),
+    ...movementInsertStatements(
+      freebieDeltas.map(([, n]) => ({
+        inventory_id: null,
+        variant_id: null,
+        movement_type: n < 0 ? "Sale" : "Return",
+        quantity: n,
+        reference_type: "freebie",
+        reference_id: orderId,
+        notes: first ? `Freebies given on ${label}` : `${label} freebies adjusted`,
+      })),
+    ),
   ];
-  if (inserts.length) await dbBatch(inserts);
 
-  const wasCompleted = priorStatus === "Completed";
-  const isCompleted = status === "Completed";
-  const label = String(orderRow.order_number || "").trim();
-  const first = !wasCompleted && isCompleted;
-
-  let deltas = [];
-  let freebieDeltas = [];
-  if (first) {
-    deltas = stockDelta([], lines, -1);
-    freebieDeltas = freebieDelta([], gifts);
-  } else if (wasCompleted && !isCompleted) {
-    deltas = stockDelta(priorItems, [], -1);
-    freebieDeltas = freebieDelta(priorFreebies, []);
-  } else if (wasCompleted && isCompleted) {
-    // Re-saving a completed order only moves the DIFFERENCE, so a paddle is
-    // never deducted twice and the ledger never grows a phantom second sale.
-    deltas = stockDelta(priorItems, lines, -1);
-    freebieDeltas = freebieDelta(priorFreebies, gifts);
+  let orderId = id;
+  if (id) {
+    await dbBatch([
+      {
+        sql: `UPDATE orders SET order_number = ?, order_date = ?, customer_name = ?, customer = ?, customer_email = ?, customer_phone = ?, shipping_address = ?, channel = ?, status = ?,
+              payment_requirement = ?, shipping_income_php = ?, discount_php = ?, notes = ?,
+              carrier = ?, tracking_number = ?, fulfillment_status = ?, shipped_date = ?,
+              sale_total = ?, product_cost = ?, shipping_cost = ?, freebie_cost = ?, profit = ?, order_type = ?
+          WHERE id = ?`,
+        args: [...args, id],
+      },
+      ...itemAndStockStatements(id),
+    ]);
+  } else {
+    // A brand-new order can't join the batch above — its id doesn't exist
+    // until this INSERT runs, and every later statement needs it. Its own
+    // status write is a single INSERT (nothing to partially commit within
+    // it), so the one real atomicity gap here is narrower than the update
+    // path above: only reachable if a new order is created already
+    // Completed in the same save AND the second batch below then fails.
+    const res = await db(
+      `INSERT INTO orders (order_number, order_date, customer_name, customer, customer_email, customer_phone, shipping_address, channel, status,
+              payment_requirement, shipping_income_php, discount_php, notes,
+              carrier, tracking_number, fulfillment_status, shipped_date,
+              sale_total, product_cost, shipping_cost, freebie_cost, profit, order_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args,
+    );
+    orderId = res.lastInsertId;
+    await dbBatch(itemAndStockStatements(orderId));
   }
-
-  await applyAndLog(deltas, {
-    movement_type: first ? "Sale" : "Correction",
-    reference_type: "order",
-    reference_id: orderId,
-    notes: first ? `Sold on ${label}` : `${label} edited after completion`,
-  });
-  await applyFreebieStock(freebieDeltas, {
-    reference_id: orderId,
-    notes: first ? `Freebies given on ${label}` : `${label} freebies adjusted`,
-  });
 
   return { orderId, status, stockApplied: first };
 }
