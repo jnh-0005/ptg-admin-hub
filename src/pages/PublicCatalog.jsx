@@ -48,6 +48,9 @@ const PAYMENT_METHODS = [
 const CART_STORAGE_KEY = "ptg-public-cart-v2";
 const COMPARE_STORAGE_KEY = "ptg-public-compare-v1";
 const MAX_COMPARE = 3;
+// Share of the compare table's width given to the row-label column
+// ("CORE", "BRAND", …) — the rest is split evenly across the paddle columns.
+const LABEL_PCT = 20;
 
 const money = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
@@ -1054,12 +1057,20 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
           width instead of one column ballooning to fit its longest spec line
           and pushing the rest off-screen — the exact failure mode on
           pickleclubdavao.com/shop/compare's own mobile layout.
+
+          Every column here is a PERCENTAGE of the table, including the
+          label column — mixing a fixed-px label column with percentage
+          product columns (100/n% each) made the columns collectively
+          demand more than 100% of the table's width the moment there were
+          3 of them, and table-layout:fixed doesn't reconcile that cleanly:
+          columns visibly overlapped instead of shrinking. LABEL_PCT is
+          carved out of the 100% up front, so the math always adds up.
         */}
         <table className="public-compare-table">
           <colgroup>
-            <col className="public-compare-col-label" />
+            <col style={{ width: `${LABEL_PCT}%` }} />
             {selected.map((product) => (
-              <col key={product.id} style={{ width: `${100 / selected.length}%` }} />
+              <col key={product.id} style={{ width: `${(100 - LABEL_PCT) / selected.length}%` }} />
             ))}
           </colgroup>
           <tbody>

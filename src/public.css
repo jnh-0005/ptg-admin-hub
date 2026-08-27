@@ -152,10 +152,12 @@ button.public-compare-clear:hover{color:#b23}
     minmax(220px,1fr) let each card's column — and its aspect-ratio:1 image
     with it — stretch to fill whatever's left of a ~1160px-wide desktop main
     column. With only 2-3 paddles selected that's ~500px+ of empty photo
-    placeholder. A capped max width plus justify-content:start keeps cards
-    at a normal, readable size and left-aligned instead of stretched.
+    placeholder. A capped max width keeps cards at a normal, readable size;
+    justify-content:center (not :start) means 2 selected paddles sit
+    balanced in the middle of the row instead of stranded against the left
+    edge with a huge gap of empty space to their right.
   */
-  .public-compare-grid{grid-template-columns:repeat(auto-fit,minmax(220px,260px));justify-content:start}
+  .public-compare-grid{grid-template-columns:repeat(auto-fit,minmax(220px,260px));justify-content:center}
 }
 .public-compare-card{position:relative;display:grid;min-width:0;gap:6px;padding:12px;border:1px solid var(--line);border-radius:16px;background:#fff}
 .public-compare-remove{position:absolute;top:10px;right:10px;z-index:1;display:grid;width:26px;height:26px;place-items:center;border:0;border-radius:50%;background:#f0f2f1;color:var(--muted)}
@@ -174,21 +176,26 @@ button.public-compare-clear:hover{color:#b23}
 */
 .public-compare-table-wrap{margin-top:20px;border:1px solid var(--line);border-radius:14px;background:#fff}
 .public-compare-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px}
-.public-compare-col-label{width:70px}
-.public-compare-table th,.public-compare-table td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:break-word}
+.public-compare-table th,.public-compare-table td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:break-word}
 .public-compare-table tr:last-child th,.public-compare-table tr:last-child td{border-bottom:0}
-.public-compare-table th[scope="row"]{color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.public-compare-table th[scope="row"]{color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;overflow-wrap:break-word}
 .public-compare-table td{font-weight:600;line-height:1.4}
 @media(min-width:640px){
   .public-compare-table{font-size:12px}
-  .public-compare-col-label{width:120px}
   .public-compare-table th,.public-compare-table td{padding:12px 16px}
   .public-compare-table th[scope="row"]{font-size:10px}
 }
 .public-compare-section th{padding:9px 16px;background:var(--paper);color:var(--teal);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
-.public-compare-colour-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-.public-compare-colour-row+.public-compare-colour-row{margin-top:4px}
-.public-compare-colour-row small{color:var(--muted);font-size:9px;white-space:nowrap}
+/*
+  Column, not row: at 3 paddles a product column is only ~90px wide on a
+  phone, and "Standard" + "Pre-order" side by side (the old
+  justify-content:space-between row) simply doesn't fit — that crowding is
+  what read as overlapping text. Stacking the status under the colour name
+  always fits.
+*/
+.public-compare-colour-row{display:flex;flex-direction:column;gap:1px}
+.public-compare-colour-row+.public-compare-colour-row{margin-top:6px}
+.public-compare-colour-row small{color:var(--muted);font-size:9px}
 
 /* ── Empty / error / loading states ────────────────────────────────── */
 .public-state{display:grid;min-height:240px;place-content:center;justify-items:center;padding:32px;border:1px solid var(--line);border-radius:16px;background:#fff;text-align:center}
