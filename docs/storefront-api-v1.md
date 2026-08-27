@@ -1,0 +1,65 @@
+# paddle to go storefront api v1
+
+## hosting constraint
+
+The portal is a Vite + React app compiled as a static bundle by folk. The existing `__folkdata/query` endpoint is an app-internal database transport and is not a safe public API. Static Vite output cannot execute the `api/v1/*.js` handlers by itself. The handlers in this change are the contract and reference implementation, but they must be mounted on a server-side function or edge runtime before any public URL is advertised.
+
+Do not expose `/__folkdata/query`, admin routes, or the database transport to the storefront.
+
+## routes
+
+`GET /api/v1/catalog`
+
+Requires `Authorization: Bearer <PTG_STOREFRONT_API_KEY>`. Returns only active, non-archived products, customer prices, `available` or `unavailable` state, active variants, and approved storefront photos. It never returns quantities, costs, payments, batches, orders, settings, or SQL.
+
+`OPTIONS /api/v1/catalog`
+
+CORS preflight. Only origins listed in `STOREFRONT_ORIGINS` are echoed. The default is a non-production placeholder and must be replaced.
+
+`POST /api/v1/orders`
+
+Requires the same bearer key and an `Idempotency-Key` matching `[A-Za-z0-9._-]{8,100}`. Accepts a bounded JSON body:
+
+```json
+{
+  "customer": {"name":"buyer", "email":"buyer@example.com", "phone":"+63...", "address":"delivery address"},
+  "fulfillment_method":"shipping",
+  "shipping_fee_php":200,
+  "items":[{"variant_id":12,"quantity":1}],
+  "acknowledgment":true,
+  "payment_proof_url":"https://..."
+}
+```
+
+The server validates fields, re-reads active and available inventory, rejects stale or duplicate lines, uses database prices rather than client prices, calculates the total and exact 50% deposit, and creates a `Pending` order plus order items. It does not decrement stock. It does not accept payment credentials. The acknowledgment is stored with the order. Response is `201` with order number, status, totals, deposit, and balance only.
+
+## configuration
+
+Set server-side secrets in the function runtime, never in Vite `VITE_*` variables and never in source control:
+
+`PTG_STOREFRONT_API_KEY`: randomly generated secret, at least 32 characters
+
+`STOREFRONT_ORIGINS`: comma-separated exact HTTPS storefront origins, for example `https://shop.example.com`
+
+`PTG_API_RATE_LIMIT`: optional requests per minute per forwarded client address. Defaults are 60 for catalog and 10 for order creation.
+
+The current in-memory limiter is a basic protection for a single function instance. A production multi-instance deployment should replace it with the host's shared rate-limit primitive. The idempotency header is validated, but durable replay protection requires a small idempotency table or host-provided idempotency store before production checkout. Do not advertise checkout as production-ready until that persistence and a real transaction boundary are available.
+
+## error shape
+
+All errors use:
+
+```json
+{"error":{"code":"item_unavailable","message":"one or more selected items are no longer available"}}
+```
+
+Clients should handle `401`, `409`, `422`, `429`, and `503` without displaying internal details.
+
+## mounting checklist
+
+1. Put the handlers behind a server-side runtime that can access the existing shared SQLite database through a trusted server adapter.
+2. Pass an adapter with `query(sql, args)` and `batch(statements)` to the handlers. Do not pass the browser `folkdb` transport directly to an untrusted request.
+3. Keep the API origin separate from the admin UI origin if possible.
+4. Set the two secrets in the runtime secret manager and configure the exact storefront origin.
+5. Add durable idempotency storage and a transaction or compensating cleanup around order plus line inserts.
+6. Run the test suite and an external security review before deployment.

@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --bar-h: 55px;
+  --pad-bar: calc(var(--bar-h) + var(--safe-b) + 1.25rem);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    overflow-x: clip;
+  }
+
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+    font-synthesis-weight: none;
+    overscroll-behavior-y: none;
+    overflow-x: clip;
+  }
+
+  /* A tray owns the scroll while it is open, and only the first one locks it. */
+  html.tray-open,
+  html.tray-open body {
+    overflow-y: hidden;
+  }
+  html.tray-open {
+    overscroll-behavior: none;
+  }
+
+  /* Every currency value, SKU, order number and table figure. */
+  .num {
+    @apply font-mono;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    letter-spacing: -0.02em;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.021em;
+  }
+
+  :focus-visible {
+    outline: 2px solid theme("colors.cobalt.DEFAULT");
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  [data-tray] :focus-visible {
+    outline-offset: 1px;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font-family: inherit;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  ::selection {
+    background: #dbe6fc;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    @apply text-eyebrow font-semibold uppercase text-ink-3;
+  }
+
+  .card {
+    @apply rounded-lg border border-line bg-surface shadow-card;
+  }
+
+  .btn-primary {
+    @apply inline-flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 overflow-hidden
+           whitespace-nowrap rounded-md bg-cobalt px-3 py-2.5 text-[15px] font-medium text-white
+           transition-[transform,background-color] duration-150
+           active:scale-[0.975] active:bg-cobalt-deep disabled:opacity-40 xs:px-4;
+  }
+
+  .btn-quiet {
+    @apply inline-flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 overflow-hidden
+           whitespace-nowrap rounded-md border border-line bg-surface px-3 py-2.5 text-[15px]
+           font-medium text-ink transition-[transform,background-color] duration-150
+           active:scale-[0.975] active:bg-paper disabled:opacity-40 xs:px-3.5;
+  }
+
+  .btn-danger {
+    @apply inline-flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 overflow-hidden
+           whitespace-nowrap rounded-md bg-clay px-3 py-2.5 text-[15px] font-medium text-white
+           transition-[transform,filter] duration-150 active:scale-[0.975] active:brightness-90 xs:px-4;
+  }
+
+  .btn-primary > svg,
+  .btn-quiet > svg,
+  .btn-danger > svg {
+    @apply shrink-0;
+  }
+
+  .field {
+    @apply block min-h-[44px] w-full max-w-full rounded-sm border border-line bg-surface px-3 py-2.5
+           text-[15px] text-ink transition-shadow duration-150 placeholder:text-ink-4
+           focus:border-cobalt focus:outline-none;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .field:focus {
+    box-shadow: 0 0 0 3px rgb(31 95 224 / 0.13);
+  }
+  .field-err {
+    @apply border-clay;
+  }
+
+  /* Long inputs must never push a mobile tray sideways. */
+  .field-wrap,
+  .field-wrap > .relative {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .field-wrap > .field,
+  .field-wrap > .relative > .field {
+    width: 100%;
+    max-width: 100%;
+  }
+  select.field {
+    @apply block w-full max-w-full text-ellipsis;
+  }
+  input[type="date"].field::-webkit-date-and-time-value {
+    text-align: left;
+    min-width: 0;
+  }
+
+  .tab-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .tab-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pb-bar {
+    padding-bottom: var(--pad-bar);
+  }
+
+  /* Free-typed notes must wrap rather than blow the layout out. */
+  .wrap-any {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+/* Reduced motion: calmer, never broken. Travel and scale go, opacity stays. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

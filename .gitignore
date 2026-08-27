@@ -1,0 +1,12 @@
+node_modules
+dist
+.DS_Store
+.vite
+chrome
+.qa-chrome
+.qa-out
+.qa-preview
+.qa-*.png
+.qa-*.log
+.qa-*.mjs
+.qa-*.sh

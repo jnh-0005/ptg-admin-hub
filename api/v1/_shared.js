@@ -1,0 +1,150 @@
+const DEFAULT_ORIGIN = "https://storefront.example";
+const MAX_BODY_BYTES = 32_000;
+const rateState = new Map();
+
+export function apiError(status, code, message, details) {
+  return json(status, { error: { code, message, ...(details ? { details } : {}) } });
+}
+
+export function json(status, body, headers = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", ...headers },
+  });
+}
+
+export function corsHeaders(request, env = {}) {
+  const requested = request.headers.get("origin");
+  const configured = String(env.STOREFRONT_ORIGINS || "").split(",").map((x) => x.trim()).filter(Boolean);
+  const allowlist = configured.length ? configured : [DEFAULT_ORIGIN];
+  const headers = { vary: "Origin" };
+  if (requested && allowlist.includes(requested)) {
+    headers["access-control-allow-origin"] = requested;
+    headers["access-control-allow-methods"] = "GET, POST, OPTIONS";
+    headers["access-control-allow-headers"] = "content-type, authorization, idempotency-key";
+    headers["access-control-max-age"] = "600";
+  }
+  return headers;
+}
+
+export function options(request, env) {
+  return new Response(null, { status: 204, headers: corsHeaders(request, env) });
+}
+
+export function requireApiKey(request, env) {
+  const expected = String(env.PTG_STOREFRONT_API_KEY || "");
+  if (!expected || expected.length < 32) return apiError(503, "api_not_configured", "storefront api is not configured");
+  const provided = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  if (provided.length !== expected.length || !constantTimeEqual(provided, expected)) {
+    return apiError(401, "unauthorized", "a valid storefront api key is required");
+  }
+  return null;
+}
+
+function constantTimeEqual(a, b) {
+  let result = a.length ^ b.length;
+  const max = Math.max(a.length, b.length);
+  for (let i = 0; i < max; i += 1) result |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return result === 0;
+}
+
+export function rateLimit(request, env, limit = 20, windowMs = 60_000) {
+  const key = `${request.headers.get("x-forwarded-for") || "unknown"}:${request.url}`;
+  const now = Date.now();
+  const prior = rateState.get(key) || { count: 0, reset: now + windowMs };
+  if (now > prior.reset) { prior.count = 0; prior.reset = now + windowMs; }
+  prior.count += 1;
+  rateState.set(key, prior);
+  return prior.count > Number(env.PTG_API_RATE_LIMIT || limit)
+    ? apiError(429, "rate_limited", "too many requests", { retry_after_seconds: Math.ceil((prior.reset - now) / 1000) })
+    : null;
+}
+
+export async function readJson(request) {
+  const length = Number(request.headers.get("content-length") || 0);
+  if (length > MAX_BODY_BYTES) throw new Error("body_too_large");
+  const text = await request.text();
+  if (text.length > MAX_BODY_BYTES) throw new Error("body_too_large");
+  return JSON.parse(text || "{}");
+}
+
+export function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "")); }
+export function cleanText(value, max) { return String(value || "").trim().replace(/[<>]/g, "").slice(0, max); }
+export function positiveInt(value) { return Number.isInteger(value) && value > 0 && value <= 20; }
+
+export function publicPhoto(row) {
+  const value = String(row.photo_url || "").trim();
+  return /^(https:\/\/|\/images\/|\/assets\/)[^\s<>"']+$/i.test(value) ? value : null;
+}
+
+export async function publicCatalog(db) {
+  const products = await db.query(`SELECT i.id, i.name, i.sku, i.category, i.sell_price, i.photo_url,
+    CASE WHEN COALESCE(i.quantity, 0) > 0 THEN 'available' ELSE 'unavailable' END AS availability
+    FROM inventory i
+    WHERE COALESCE(i.notes, '') NOT LIKE '[archived]%'
+      AND COALESCE(i.category, '') <> 'Add-on'
+    ORDER BY i.name COLLATE NOCASE`);
+  const variants = await db.query(`SELECT v.id, v.inventory_id, v.color, v.sku, v.selling_price_php, v.photo_url,
+    CASE WHEN COALESCE(v.quantity, 0) > 0 THEN 'available' ELSE 'unavailable' END AS availability
+    FROM inventory_variants v WHERE v.active = 1 ORDER BY v.color COLLATE NOCASE`);
+  const photos = await db.query(`SELECT identity_type, identity_key, photo_url FROM storefront_photos
+    WHERE active = 1 AND approval_status IN ('approved', 'published')`);
+  const photoMap = new Map(photos.rows.map((p) => [`${p.identity_type}:${p.identity_key}`, publicPhoto(p)]));
+  const items = products.rows.map((p) => ({
+    id: p.id, name: p.name, sku: p.sku || null, category: p.category || null,
+    price_php: Number(p.sell_price || 0), availability: p.availability,
+    photo_url: photoMap.get(`model:${p.name}`) || photoMap.get(`brand:${String(p.name).split(/\s+/)[0]}`) || publicPhoto(p),
+    variants: variants.rows.filter((v) => Number(v.inventory_id) === Number(p.id)).map((v) => ({
+      id: v.id, color: v.color, sku: v.sku || null, price_php: Number(v.selling_price_php || p.sell_price || 0),
+      availability: v.availability, photo_url: photoMap.get(`model:${p.name}::${v.color}`) || publicPhoto(v),
+    })),
+  }));
+  return { version: "v1", currency: "PHP", products: items };
+}
+
+export async function createOrder(db, body) {
+  const errors = [];
+  const customer = body?.customer || {};
+  if (!cleanText(customer.name, 120)) errors.push("customer.name is required");
+  if (!validEmail(customer.email)) errors.push("customer.email must be valid");
+  if (!cleanText(customer.phone, 40)) errors.push("customer.phone is required");
+  if (!cleanText(customer.address, 500)) errors.push("customer.address is required");
+  if (!Array.isArray(body?.items) || body.items.length < 1 || body.items.length > 5) errors.push("items must contain 1 to 5 lines");
+  if (body?.acknowledgment !== true) errors.push("acknowledgment must be accepted");
+  if (!["pickup", "shipping"].includes(body?.fulfillment_method)) errors.push("fulfillment_method must be pickup or shipping");
+  if (errors.length) return apiError(422, "validation_error", "request validation failed", errors);
+
+  const requestedIds = body.items.map((x) => Number(x.variant_id || x.product_id));
+  if (requestedIds.some((x) => !Number.isInteger(x) || x <= 0) || new Set(requestedIds).size !== requestedIds.length) {
+    return apiError(422, "validation_error", "each item needs a unique positive product_id or variant_id");
+  }
+  const rows = await db.query(`SELECT i.id AS product_id, i.name, i.unit_cost, i.sell_price, i.quantity AS product_quantity,
+    v.id AS variant_id, v.color, v.active AS variant_active, v.quantity AS variant_quantity, v.selling_price_php
+    FROM inventory i LEFT JOIN inventory_variants v ON v.inventory_id = i.id
+    WHERE i.active = 1 AND (i.id IN (${requestedIds.filter((x) => x).map(() => "?").join(",")}) OR v.id IN (${requestedIds.map(() => "?").join(",")}))`, [...requestedIds, ...requestedIds]);
+  const byKey = new Map();
+  for (const row of rows.rows) { byKey.set(Number(row.variant_id || row.product_id), row); }
+  const lines = [];
+  for (const input of body.items) {
+    const key = Number(input.variant_id || input.product_id);
+    const row = byKey.get(key);
+    if (!row || (input.variant_id && row.variant_id !== key) || (input.variant_id && row.variant_active !== 1)) return apiError(409, "item_unavailable", "one or more selected items are no longer available");
+    if (!positiveInt(input.quantity)) return apiError(422, "validation_error", "quantity must be an integer from 1 to 20");
+    const available = input.variant_id ? Number(row.variant_quantity || 0) : Number(row.product_quantity || 0);
+    if (available < input.quantity) return apiError(409, "item_unavailable", "one or more selected items are no longer available");
+    const unit = Math.max(0, Number(input.variant_id ? row.selling_price_php || row.sell_price : row.sell_price || 0));
+    lines.push({ product_id: row.product_id, variant_id: row.variant_id || null, name: row.name + (row.color ? ` (${row.color})` : ""), quantity: input.quantity, unit, cost: Math.max(0, Number(row.unit_cost || 0)) });
+  }
+  const subtotal = lines.reduce((sum, line) => sum + line.unit * line.quantity, 0);
+  const shipping = body.fulfillment_method === "shipping" ? Math.max(0, Number(body.shipping_fee_php || 0)) : 0;
+  if (!Number.isFinite(shipping) || shipping > 10000) return apiError(422, "validation_error", "shipping_fee_php is invalid");
+  const total = Math.round((subtotal + shipping) * 100) / 100;
+  const deposit = Math.round(total * 50) / 100;
+  const orderNumber = `WEB-${Date.now().toString(36).toUpperCase()}`;
+  const note = JSON.stringify({ source: "storefront_api_v1", acknowledgment: true, payment_proof_url: cleanText(body.payment_proof_url, 2000) || null });
+  const inserted = await db.query(`INSERT INTO orders (order_number, order_date, customer_name, customer, customer_email, customer_phone, shipping_address, channel, status, payment_requirement, shipping_income_php, notes, sale_total, product_cost, shipping_cost, profit, order_type, fulfillment_method, acknowledgment)
+    VALUES (?, CURRENT_DATE, ?, ?, ?, ?, ?, 'Storefront', 'Pending', 'deposit', ?, ?, ?, ?, ?, ?, 'Batch', ?, ?)`, [orderNumber, cleanText(customer.name, 120), cleanText(customer.name, 120), cleanText(customer.email, 200), cleanText(customer.phone, 40), cleanText(customer.address, 500), shipping, note, total, lines.reduce((s, l) => s + l.cost * l.quantity, 0), shipping, 0, body.fulfillment_method, "Customer accepted non-refundable/non-cancellable acknowledgment"]);
+  const orderId = inserted.lastInsertId;
+  await db.batch(lines.map((line) => ({ sql: `INSERT INTO order_items (order_id, inventory_id, variant_id, product_name, quantity, unit_price, unit_cost) VALUES (?, ?, ?, ?, ?, ?, ?)`, args: [orderId, line.product_id, line.variant_id, line.name, line.quantity, line.unit, line.cost] })));
+  return json(201, { version: "v1", order: { id: orderId, order_number: orderNumber, status: "Pending", subtotal_php: subtotal, shipping_php: shipping, total_php: total, deposit_php: deposit, balance_php: Math.round((total - deposit) * 100) / 100, payment_requirement: "deposit" } });
+}
