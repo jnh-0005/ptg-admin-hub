@@ -237,6 +237,17 @@ button.public-compare-clear:hover{color:#b23}
 .public-primary{display:flex;width:100%;min-height:48px;align-items:center;justify-content:center;gap:8px;padding:0 16px;border:0;border-radius:999px;background:linear-gradient(120deg,var(--forest),var(--teal));color:#fff;font-size:12px;font-weight:750}
 .public-primary.is-added{background:linear-gradient(120deg,var(--teal),var(--forest))}
 .public-secondary-link{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;padding:8px;color:var(--teal);font-size:11px;font-weight:700}
+/* button.public-product-compare-link, not the bare class — same specificity
+   note as every other button/link fix in this file: .public-shell
+   button{font:inherit} would otherwise win the font-size tie. */
+button.public-product-compare-link{display:flex;width:fit-content;align-items:center;gap:6px;margin:10px auto 0;color:var(--muted);font-size:11px;font-weight:700}
+button.public-product-compare-link:hover{color:var(--teal)}
+button.public-product-compare-link.is-active{color:var(--teal)}
+button.public-product-compare-link:disabled{opacity:.4}
+/* Desktop-only thumbnail row — hidden on mobile, where the single hero
+   image + colour-picker list below already cover this. See the 960px
+   breakpoint for where it turns on. */
+.public-product-thumbs{display:none}
 .public-preorder-note{margin:10px 0 0;padding:10px 12px;border:1px solid #a6cbc5;border-radius:10px;background:#e9f4f2;color:var(--forest);font-size:10px;line-height:1.5}
 .public-details-card{margin-top:20px;padding:16px;border:1px solid var(--line);border-radius:14px;background:#fff}
 .public-details-card h3{margin:0 0 10px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
@@ -359,6 +370,26 @@ button.public-compare-clear:hover{color:#b23}
   .public-card-meta strong{font-size:14px}
   .public-nav{min-height:72px}
   .public-logo{height:44px}
+
+  /*
+    Desktop product page: a real two-column layout (image + thumbnails on
+    the left, info panel on the right, side by side) instead of mobile's
+    dark full-bleed backdrop with the info sheet overlaid on top of it.
+    Mobile keeps the overlay treatment entirely — nothing above this
+    breakpoint touches it.
+  */
+  .public-product-stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;align-items:start;max-width:1160px;margin:0 auto;padding:32px max(16px,calc((100vw - 1160px)/2)) 60px}
+  .public-product-backdrop{position:sticky;top:88px;min-height:0;aspect-ratio:1;border-radius:24px}
+  .public-product-back{display:none}
+  .public-product-sheet{margin-top:0;padding:0;border-radius:0;background:transparent}
+  .public-product-thumbs{display:flex;flex-wrap:wrap;gap:8px;position:absolute;left:16px;right:16px;bottom:16px;z-index:2}
+  .public-product-thumb{width:52px;height:52px;flex:0 0 52px;overflow:hidden;border:2px solid transparent;border-radius:10px;background:#ffffff1a;padding:0}
+  .public-product-thumb.is-active{border-color:#fff}
+  .public-product-thumb-image{width:100%;height:100%}
+  .public-product-thumb-image>img{width:100%;height:100%;object-fit:cover}
+  .public-product-thumb .public-placeholder{background:transparent}
+  .public-product-thumb .public-placeholder img{width:60%;opacity:.8;filter:brightness(0) invert(1)}
+  .public-product-thumb .public-placeholder span{display:none}
 }
 @media(max-width:380px){
   .public-main{padding-inline:10px}

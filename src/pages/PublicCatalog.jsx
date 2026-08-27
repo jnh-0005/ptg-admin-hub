@@ -16,6 +16,7 @@ import {
   ArrowRight,
   ArrowUp,
   CaretRight,
+  ChartBar,
   Check,
   ImageSquare,
   MagnifyingGlass,
@@ -425,7 +426,10 @@ export default function PublicCatalog() {
         <Routes>
           <Route element={<Layout cartCount={cartCount} compareCount={compareIds.length} />}>
             <Route index element={<Shop addToCart={addToCart} compareIds={compareIds} toggleCompare={toggleCompare} />} />
-            <Route path="paddle/:id" element={<ProductPage addToCart={addToCart} />} />
+            <Route
+              path="paddle/:id"
+              element={<ProductPage addToCart={addToCart} compareIds={compareIds} toggleCompare={toggleCompare} />}
+            />
             <Route
               path="compare"
               element={<ComparePage compareIds={compareIds} toggleCompare={toggleCompare} clearCompare={clearCompare} />}
@@ -774,7 +778,7 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
 }
 
 /** A real, linkable page per paddle: breadcrumb, hero image, colour picker, honest specifics. */
-function ProductPage({ addToCart }) {
+function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { products, status } = useShopData();
@@ -825,12 +829,39 @@ function ProductPage({ addToCart }) {
 
   const maxQty = MAX_ORDER_QTY;
   const spec = specFor(product.name);
+  const comparing = compareIds.includes(product.id);
+  const compareDisabled = !comparing && compareIds.length >= MAX_COMPARE;
 
   return (
     <div className="public-product-stage">
       <div className="public-product-backdrop">
         <Link to=".." className="public-product-back" aria-label="Back to shop"><ArrowLeft size={18} /></Link>
         <ProductImage product={product} choice={choice} className="public-product-image" />
+
+        {/*
+          Desktop only (see the 960px breakpoint in public.css) — mobile
+          keeps its single hero image untouched. Each thumbnail is that
+          colour's own real photo (or the honest placeholder), not a
+          multi-angle gallery PTG doesn't have: clicking one also selects
+          that colour, so it doubles as the variant picker at this width.
+        */}
+        {product.choices.length > 1 && (
+          <div className="public-product-thumbs" role="tablist" aria-label="Choose a colour">
+            {product.choices.map((item) => (
+              <button
+                type="button"
+                key={item.id || item.color}
+                className={`public-product-thumb ${choice?.id === item.id ? "is-active" : ""}`}
+                onClick={() => { setChoice(item); setQuantity(1); }}
+                aria-label={item.color}
+                aria-selected={choice?.id === item.id}
+                role="tab"
+              >
+                <ProductImage product={product} choice={item} className="public-product-thumb-image" />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <section className="public-product-sheet">
@@ -891,6 +922,17 @@ function ProductPage({ addToCart }) {
             {added ? "Added to cart" : available(choice) ? `Add ${choice?.color || "paddle"} to cart` : `Pre-order ${choice?.color || "this paddle"}`}
           </button>
         </div>
+        {toggleCompare && (
+          <button
+            type="button"
+            className={`public-product-compare-link ${comparing ? "is-active" : ""}`}
+            onClick={() => toggleCompare(product.id)}
+            disabled={compareDisabled}
+          >
+            {comparing ? <Check size={13} /> : <ChartBar size={13} />}
+            {comparing ? "Added to compare" : "Add to compare"}
+          </button>
+        )}
         {!available(choice) && !added && (
           <p className="public-preorder-note">
             This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50%
