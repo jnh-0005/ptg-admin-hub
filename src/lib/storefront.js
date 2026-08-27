@@ -148,6 +148,17 @@ export const HONOLULU_BRAND = "Honolulu";
 const KNOWN_BRAND_BY_KEY = new Map(KNOWN_BRANDS.map((brand) => [brand.toLowerCase(), brand]));
 
 /**
+ * A second model-code-style exception, same shape as the Honolulu one above:
+ * "Bread and Butter" is the brand's real two-word name (its own logo reads
+ * "Bread & Butter Pickleball Co."), so the plain first-word rule would file
+ * "Bread and Butter Loco" under "Bread" alone — which is exactly the bug
+ * this fixes. Checked as a whole-phrase prefix before the single-word
+ * fallback, so "Bread and Butter <anything>" always groups as one brand
+ * instead of three (Bread / and / Butter) or the wrong one (Bread).
+ */
+const KNOWN_BRAND_PHRASES = [{ prefix: "bread and butter", brand: "Bread and Butter" }];
+
+/**
  * Inventory names are the source of truth for storefront grouping. Keep the
  * legacy known-brand spellings, but also accept any new admin-entered brand
  * when it is written as the leading word of a multi-word product name. This
@@ -157,6 +168,10 @@ const KNOWN_BRAND_BY_KEY = new Map(KNOWN_BRANDS.map((brand) => [brand.toLowerCas
 export function brandOf(name) {
   const value = String(name || "").trim();
   if (!value) return HOUSE_BRAND;
+  const lowerValue = value.toLowerCase();
+  for (const { prefix, brand } of KNOWN_BRAND_PHRASES) {
+    if (lowerValue === prefix || lowerValue.startsWith(`${prefix} `)) return brand;
+  }
   const parts = value.split(/\s+/);
   const firstKey = parts[0].toLowerCase();
   // The model-code exception runs FIRST, so a bare `J6CR` reaches its brand

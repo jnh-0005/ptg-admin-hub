@@ -264,6 +264,7 @@ function Reveal({ as: Tag = "div", delay = 0, className, children, ...rest }) {
 // A brand with no file here (e.g. one newly added to inventory) falls back
 // to its plain name in the marquee rather than a fabricated or guessed mark.
 const BRAND_LOGOS = {
+  "Bread and Butter": "/images/brands/bread-and-butter.png",
   Sypik: "/images/brands/sypik.png",
   RPM: "/images/brands/rpm.png",
   Joola: "/images/brands/joola.png",
