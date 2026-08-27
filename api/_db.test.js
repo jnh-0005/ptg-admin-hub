@@ -1,5 +1,34 @@
-import { describe, expect, it } from "vitest";
-import { translateDialect } from "./_db.js";
+import { describe, expect, it, vi } from "vitest";
+
+process.env.DATABASE_URL = "postgres://fake-for-tests";
+
+// A fake pg.Pool: every "INSERT" returns a fresh incrementing id via a fake
+// RETURNING id, everything else (BEGIN/COMMIT/ROLLBACK/other) returns
+// nothing. Records every statement so tests can assert what runStatements
+// actually sent to the "database".
+const queries = [];
+let nextFakeId = 0;
+vi.mock("pg", () => ({
+  default: {
+    Pool: class {
+      async connect() {
+        return {
+          async query(sql, args) {
+            queries.push({ sql, args });
+            if (/^\s*INSERT/i.test(sql)) {
+              nextFakeId += 1;
+              return { rows: [{ id: nextFakeId }], fields: [{ name: "id" }], rowCount: 1 };
+            }
+            return { rows: [], fields: [], rowCount: 0 };
+          },
+          release() {},
+        };
+      }
+    },
+  },
+}));
+
+const { translateDialect, runStatements, FIRST_INSERT_ID } = await import("./_db.js");
 
 describe("SQLite -> Postgres dialect translation", () => {
   it("turns AUTOINCREMENT primary keys into SERIAL", () => {
@@ -74,5 +103,55 @@ describe("SQLite -> Postgres dialect translation", () => {
   it("leaves ordinary portable SQL untouched", () => {
     const sql = "SELECT id, name FROM inventory WHERE quantity > ? ORDER BY id DESC LIMIT 10";
     expect(translateDialect(sql)).toBe(sql);
+  });
+});
+
+describe("runStatements / FIRST_INSERT_ID", () => {
+  it("resolves FIRST_INSERT_ID to the batch's first insert id, in every later statement", async () => {
+    queries.length = 0;
+    const results = await runStatements([
+      { sql: "INSERT INTO orders (a) VALUES (?)", args: [1] },
+      { sql: "INSERT INTO order_items (order_id) VALUES (?)", args: [FIRST_INSERT_ID] },
+      { sql: "INSERT INTO order_items (order_id) VALUES (?)", args: [FIRST_INSERT_ID] },
+    ]);
+    const orderId = results[0].last_insert_rowid;
+    // Each order_items row got its own new id (order id + 1, + 2, ...) from
+    // the fake, proving FIRST_INSERT_ID is NOT "the previous statement's id"
+    // — if it were, the second order_items insert would have received the
+    // first order_items row's id instead of the order's.
+    expect(results[1].last_insert_rowid).toBe(orderId + 1);
+    expect(results[2].last_insert_rowid).toBe(orderId + 2);
+    const itemQueries = queries.filter((q) => q.sql.includes("order_items"));
+    expect(itemQueries[0].args).toEqual([orderId]);
+    expect(itemQueries[1].args).toEqual([orderId]);
+  });
+
+  it("rolls back the whole batch when a later statement fails, never committing a partial order", async () => {
+    queries.length = 0;
+    const client = {
+      calls: [],
+      async query(sql) {
+        client.calls.push(sql);
+        if (/^\s*INSERT INTO order_items/i.test(sql)) throw new Error("simulated failure");
+        if (/^\s*INSERT/i.test(sql)) return { rows: [{ id: 999 }], fields: [{ name: "id" }], rowCount: 1 };
+        return { rows: [], fields: [], rowCount: 0 };
+      },
+      release: vi.fn(),
+    };
+    const pg = await import("pg");
+    const originalConnect = pg.default.Pool.prototype.connect;
+    pg.default.Pool.prototype.connect = async () => client;
+    try {
+      await expect(
+        runStatements([
+          { sql: "INSERT INTO orders (a) VALUES (?)", args: [1] },
+          { sql: "INSERT INTO order_items (order_id) VALUES (?)", args: [FIRST_INSERT_ID] },
+        ]),
+      ).rejects.toThrow("simulated failure");
+      expect(client.calls).toContain("ROLLBACK");
+      expect(client.calls).not.toContain("COMMIT");
+    } finally {
+      pg.default.Pool.prototype.connect = originalConnect;
+    }
   });
 });

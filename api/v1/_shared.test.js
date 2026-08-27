@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { corsHeaders, createOrder, publicPhoto, requireApiKey, positiveInt, validEmail } from "./_shared.js";
+import { FIRST_INSERT_ID } from "../_db.js";
 
 const BASE_ORDER_BODY = {
   customer: { name: "Buyer", email: "buyer@example.com", phone: "+639170000000" },
@@ -63,8 +64,23 @@ function fakeDb(productQuantity, { idempotency = new Map(), orderInserts = { cou
       orderInserts.count += 1;
       return { lastInsertId: 1 };
     },
-    async batch() {
-      return [{}];
+    // Mirrors api/_db.js's real FIRST_INSERT_ID resolution: only the
+    // batch's first statement's own lastInsertId is available to the rest —
+    // this is what lets a test catch a regression back to two separate
+    // db.query()/db.batch() calls (the pre-fix, non-atomic shape) reaching
+    // into this fake, since that shape never passes FIRST_INSERT_ID at all.
+    async batch(statements) {
+      orderInserts.count += 1;
+      let firstInsertId = null;
+      return statements.map((stmt, i) => {
+        for (const arg of stmt.args) {
+          if (arg === FIRST_INSERT_ID && firstInsertId === null) {
+            throw new Error("FIRST_INSERT_ID referenced before the batch's first insert produced an id");
+          }
+        }
+        if (i === 0) firstInsertId = 1; // simulate the order insert producing id 1
+        return { lastInsertId: firstInsertId };
+      });
     },
   };
 }

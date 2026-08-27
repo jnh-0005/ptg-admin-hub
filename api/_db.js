@@ -160,8 +160,29 @@ async function execOne(client, { sql, args = [] }) {
  * Runs every statement in one transaction — a real ACID boundary the
  * original folk-hosted transport never had (the project handoff flagged
  * this as an open item). Any single statement failing rolls back the whole
- * batch instead of leaving a half-written order.
+ * batch instead of leaving a half-written order. That guarantee only covers
+ * statements passed to a single `db.batch()` call, though — see
+ * FIRST_INSERT_ID below for how a caller gets an order-insert-then-
+ * dependent-line-inserts sequence into one such call.
  */
+/**
+ * Placeholder a caller can put in a later statement's `args` inside one
+ * `db.batch()` call to mean "the row id the batch's first INSERT
+ * generated." Needed because order line items depend on the order row's id,
+ * but that id doesn't exist until the order INSERT itself runs — without
+ * this, the order insert and its line inserts would have to be two separate
+ * `runStatements` calls (two separate transactions), which is exactly the
+ * gap the ACID-boundary comment above used to overstate: it was true of any
+ * one batch call, but createOrder (api/v1/_shared.js) used to make two,
+ * leaving a real window where an order could commit with zero line items if
+ * the process died between them. Resolved only against the FIRST insert in
+ * the batch (not a running "previous statement" pointer), because that's
+ * the one dependency this app actually has — an order id, referenced by
+ * every one of its line items, never a chain of inserts each depending on
+ * the one before it.
+ */
+export const FIRST_INSERT_ID = Symbol("db.first-insert-id");
+
 /**
  * The `db.query(sql, args)` / `db.batch(statements)` shape api/v1/_shared.js
  * expects — rows as objects keyed by column name, same as folkdb.js gives
@@ -191,8 +212,12 @@ export async function runStatements(statements) {
   try {
     await client.query("BEGIN");
     const results = [];
+    let firstInsertId = null;
     for (const stmt of statements) {
-      results.push(await execOne(client, stmt));
+      const args = (stmt.args || []).map((a) => (a === FIRST_INSERT_ID ? firstInsertId : a));
+      const result = await execOne(client, { sql: stmt.sql, args });
+      if (firstInsertId === null && result.last_insert_rowid != null) firstInsertId = result.last_insert_rowid;
+      results.push(result);
     }
     await client.query("COMMIT");
     return results;

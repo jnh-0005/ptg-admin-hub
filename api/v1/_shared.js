@@ -1,3 +1,9 @@
+// FIRST_INSERT_ID is part of the db adapter contract now (see api/_db.js
+// and docs/storefront-api-v1.md's "mounting checklist"), not just the
+// concrete Postgres adapter's business — any adapter passed to these
+// handlers must resolve it inside db.batch() the same way.
+import { FIRST_INSERT_ID } from "../_db.js";
+
 const DEFAULT_ORIGIN = "https://storefront.example";
 // Proof-of-payment is an inline compressed image (see compactProof in
 // PublicCatalog.jsx), not a hosted URL — it can legitimately run up to the
@@ -217,9 +223,24 @@ async function buildOrder(db, body) {
   if (isShipping && recipient) noteParts.push(`Recipient: ${recipient}`);
   const note = noteParts.join(" ");
   const shippingAddress = isShipping ? cleanText(customer.address, 500) || null : null;
-  const inserted = await db.query(`INSERT INTO orders (order_number, order_date, customer_name, customer, customer_email, customer_phone, shipping_address, channel, status, payment_requirement, shipping_income_php, notes, sale_total, product_cost, shipping_cost, profit, order_type, fulfillment_method, payment_proof_url, acknowledgment)
-    VALUES (?, CURRENT_DATE, ?, ?, ?, ?, ?, 'Storefront', 'Pending', 'deposit', ?, ?, ?, ?, ?, ?, 'Batch', ?, ?, ?)`, [orderNumber, cleanText(customer.name, 120), cleanText(customer.name, 120), cleanText(customer.email, 200), cleanText(customer.phone, 40), shippingAddress, shipping, note, total, lines.reduce((s, l) => s + l.cost * l.quantity, 0), shipping, 0, body.fulfillment_method, proofUrl, "Customer accepted non-refundable/non-cancellable acknowledgment"]);
-  const orderId = inserted.lastInsertId;
-  await db.batch(lines.map((line) => ({ sql: `INSERT INTO order_items (order_id, inventory_id, variant_id, product_name, quantity, unit_price, unit_cost) VALUES (?, ?, ?, ?, ?, ?, ?)`, args: [orderId, line.product_id, line.variant_id, line.name, line.quantity, line.unit, line.cost] })));
+  // Order insert and its line-item inserts go in ONE db.batch() call, not
+  // query() then batch() — that used to be two separate transactions with a
+  // real window between them where the process could die after the order
+  // committed but before any line existed. FIRST_INSERT_ID (api/_db.js) lets
+  // every line-item statement reference the order row's id even though it
+  // doesn't exist yet when this array is built; the concrete adapter
+  // resolves it from the batch's own first INSERT before running the rest.
+  const [orderResult] = await db.batch([
+    {
+      sql: `INSERT INTO orders (order_number, order_date, customer_name, customer, customer_email, customer_phone, shipping_address, channel, status, payment_requirement, shipping_income_php, notes, sale_total, product_cost, shipping_cost, profit, order_type, fulfillment_method, payment_proof_url, acknowledgment)
+        VALUES (?, CURRENT_DATE, ?, ?, ?, ?, ?, 'Storefront', 'Pending', 'deposit', ?, ?, ?, ?, ?, ?, 'Batch', ?, ?, ?)`,
+      args: [orderNumber, cleanText(customer.name, 120), cleanText(customer.name, 120), cleanText(customer.email, 200), cleanText(customer.phone, 40), shippingAddress, shipping, note, total, lines.reduce((s, l) => s + l.cost * l.quantity, 0), shipping, 0, body.fulfillment_method, proofUrl, "Customer accepted non-refundable/non-cancellable acknowledgment"],
+    },
+    ...lines.map((line) => ({
+      sql: `INSERT INTO order_items (order_id, inventory_id, variant_id, product_name, quantity, unit_price, unit_cost) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [FIRST_INSERT_ID, line.product_id, line.variant_id, line.name, line.quantity, line.unit, line.cost],
+    })),
+  ]);
+  const orderId = orderResult.lastInsertId;
   return json(201, { version: "v1", order: { id: orderId, order_number: orderNumber, status: "Pending", subtotal_php: subtotal, shipping_php: shipping, total_php: total, deposit_php: deposit, balance_php: Math.round((total - deposit) * 100) / 100, payment_requirement: "deposit" } });
 }

@@ -49,7 +49,9 @@ Set server-side secrets in the function runtime, never in Vite `VITE_*` variable
 
 The current in-memory rate limiter is a basic protection for a single function instance. A production multi-instance deployment should replace it with the host's shared rate-limit primitive.
 
-The `Idempotency-Key` header is now backed by durable storage: `POST /api/v1/orders` claims the key in the `api_idempotency` table (an `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING`, so two concurrent requests for the same key can never both create an order) before touching inventory or `orders`. A repeat request for a key that already produced an order replays the cached `201` response instead of re-creating it; a repeat request for a key that's still mid-flight gets `409 request_in_progress`; a key whose request failed validation or availability has its claim released immediately, so the same key can be retried once the request is fixed. A real transaction boundary across the order-plus-line-items insert is still an open item — see the mounting checklist.
+The `Idempotency-Key` header is now backed by durable storage: `POST /api/v1/orders` claims the key in the `api_idempotency` table (an `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING`, so two concurrent requests for the same key can never both create an order) before touching inventory or `orders`. A repeat request for a key that already produced an order replays the cached `201` response instead of re-creating it; a repeat request for a key that's still mid-flight gets `409 request_in_progress`; a key whose request failed validation or availability has its claim released immediately, so the same key can be retried once the request is fixed.
+
+The order insert and its line-item inserts are now one `db.batch()` call, one real transaction — not the order insert followed by a separate batch call, which used to leave a window where the process could die after the order committed but before any line existed. Line items reference the order row's id via `FIRST_INSERT_ID` (see the adapter contract note below), since that id doesn't exist yet when the statement list is built.
 
 ## error shape
 
@@ -64,8 +66,8 @@ Clients should handle `401`, `409`, `422`, `429`, and `503` without displaying i
 ## mounting checklist
 
 1. Put the handlers behind a server-side runtime that can access the existing shared SQLite database through a trusted server adapter.
-2. Pass an adapter with `query(sql, args)` and `batch(statements)` to the handlers. Do not pass the browser `folkdb` transport directly to an untrusted request.
+2. Pass an adapter with `query(sql, args)` and `batch(statements)` to the handlers. Do not pass the browser `folkdb` transport directly to an untrusted request. `batch(statements)` must run every statement in one real transaction and must resolve `FIRST_INSERT_ID` (exported by `api/_db.js`) when it appears in a later statement's `args`, substituting the row id the batch's *first* INSERT produced — not a running previous-statement pointer. `createOrder` relies on this to put an order insert and its dependent line-item inserts in one atomic call.
 3. Keep the API origin separate from the admin UI origin if possible.
 4. Set the two secrets in the runtime secret manager and configure the exact storefront origin.
-5. Durable idempotency storage is done (see above). Still open: a transaction or compensating cleanup around the order-plus-line-items insert — those are currently two separate statements/transactions, so a crash between them can leave an order with no lines.
+5. Durable idempotency storage and a real transaction boundary around the order-plus-line-items insert are both done (see above).
 6. Run the test suite and an external security review before deployment.
