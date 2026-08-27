@@ -147,7 +147,16 @@ button.public-compare-clear:hover{color:#b23}
    complaint. min-width:0 on the card lets its content shrink instead of
    forcing the row wider than the viewport. */
 .public-compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-@media(min-width:640px){.public-compare-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}}
+@media(min-width:640px){
+  /*
+    minmax(220px,1fr) let each card's column — and its aspect-ratio:1 image
+    with it — stretch to fill whatever's left of a ~1160px-wide desktop main
+    column. With only 2-3 paddles selected that's ~500px+ of empty photo
+    placeholder. A capped max width plus justify-content:start keeps cards
+    at a normal, readable size and left-aligned instead of stretched.
+  */
+  .public-compare-grid{grid-template-columns:repeat(auto-fit,minmax(220px,260px));justify-content:start}
+}
 .public-compare-card{position:relative;display:grid;min-width:0;gap:6px;padding:12px;border:1px solid var(--line);border-radius:16px;background:#fff}
 .public-compare-remove{position:absolute;top:10px;right:10px;z-index:1;display:grid;width:26px;height:26px;place-items:center;border:0;border-radius:50%;background:#f0f2f1;color:var(--muted)}
 .public-compare-remove:hover{background:#e3e0da;color:var(--ink)}
