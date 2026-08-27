@@ -22,7 +22,7 @@ Requires the same bearer key and an `Idempotency-Key` matching `[A-Za-z0-9._-]{8
 
 ```json
 {
-  "customer": {"name":"buyer", "email":"buyer@example.com", "phone":"+63...", "address":"delivery address"},
+  "customer": {"name":"buyer", "email":"buyer@example.com", "phone":"+63...", "address":"delivery address", "facebook":"Facebook name or profile link", "recipient":"recipient name, recipient phone"},
   "fulfillment_method":"shipping",
   "shipping_fee_php":200,
   "items":[{"variant_id":12,"quantity":1}],
@@ -30,6 +30,8 @@ Requires the same bearer key and an `Idempotency-Key` matching `[A-Za-z0-9._-]{8
   "payment_proof_url":"https://..."
 }
 ```
+
+`customer.facebook` and `customer.recipient` are optional and additive — neither has a dedicated `orders` column, so when present they're appended to `orders.notes` (the same free-text field fulfilment context already lands in), not silently dropped. An older client that never sends them still gets the original note text unchanged.
 
 The server validates fields, re-reads active inventory, rejects stale or duplicate lines, uses database prices rather than client prices, calculates the total and exact 50% deposit, and creates a `Pending` order plus order items. It does not decrement stock. It does not accept payment credentials. The acknowledgment is stored with the order. Response is `201` with order number, status, totals, deposit, and balance only.
 

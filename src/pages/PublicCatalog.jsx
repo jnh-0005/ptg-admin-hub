@@ -45,6 +45,10 @@ const PAYMENT_METHODS = [
   { id: "gcash", label: "GCash", image: "/images/payment-gcash.jpg" },
   { id: "gotyme", label: "GoTyme Bank", image: "/images/payment-gotyme.jpg" },
 ];
+// PTG's real Facebook Page (facebook.com/profile.php?id=61593396870812).
+// m.me accepts a numeric Page ID directly, so this opens a real Messenger
+// thread with PTG — not a placeholder or guessed handle.
+const PTG_MESSENGER_URL = "https://m.me/61593396870812";
 const CART_STORAGE_KEY = "ptg-public-cart-v2";
 const COMPARE_STORAGE_KEY = "ptg-public-compare-v1";
 const MAX_COMPARE = 3;
@@ -1227,6 +1231,7 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
     name: "",
     email: "",
     phone: "",
+    facebookContact: "",
     fulfillment: "Pickup",
     address: "",
     regionCode: "",
@@ -1235,8 +1240,12 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
     cityName: "",
     barangay: "",
     zip: "",
+    recipientSameAsContact: true,
+    recipientName: "",
+    recipientPhone: "",
     proof: "",
     proofName: "",
+    messengerSent: false,
     acknowledged: false,
   });
   const [busy, setBusy] = useState(false);
@@ -1331,15 +1340,27 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
     const name = clean(form.name);
     const email = clean(form.email);
     const phone = clean(form.phone);
+    const facebookContact = clean(form.facebookContact);
+    const recipientName = form.recipientSameAsContact ? name : clean(form.recipientName);
+    const recipientPhone = form.recipientSameAsContact ? phone : clean(form.recipientPhone);
     if (!cart.length) return setError("Your cart is empty.");
-    if (!name || !email || !phone) return setError("Add your name, email, and phone.");
+    if (!name || !email || !phone || !facebookContact) {
+      return setError("Fill in your name, email, phone, and Facebook name or profile link.");
+    }
     if (
       form.fulfillment === "Shipping" &&
-      (!clean(form.address) || !form.regionCode || !form.cityCode || !clean(form.barangay) || !clean(form.zip))
+      (!clean(form.address) ||
+        !form.regionCode ||
+        !form.cityCode ||
+        !clean(form.barangay) ||
+        !clean(form.zip) ||
+        !recipientName ||
+        !recipientPhone)
     ) {
-      return setError("Add your complete shipping address — street, region, city, barangay, and ZIP code.");
+      return setError("Fill in your complete shipping address and recipient details.");
     }
     if (!form.proof) return setError("Add your proof of payment.");
+    if (!form.messengerSent) return setError("Confirm you've sent your payment proof on Messenger.");
     if (!form.acknowledged) return setError("Acknowledge the order terms to continue.");
 
     setBusy(true);
@@ -1356,10 +1377,12 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
             name,
             email,
             phone,
+            facebook: facebookContact,
             address:
               form.fulfillment === "Shipping"
                 ? `${clean(form.address)}, Brgy. ${clean(form.barangay)}, ${clean(form.cityName)}, ${clean(form.regionName)} ${clean(form.zip)}`
                 : "",
+            recipient: form.fulfillment === "Shipping" ? `${recipientName}, ${recipientPhone}` : "",
           },
           fulfillment_method: form.fulfillment.toLowerCase(),
           shipping_fee_php: 0,
@@ -1396,11 +1419,37 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
       {error && <p className="public-error" ref={errorRef} tabIndex="-1">{error}</p>}
 
       <div className="public-checkout-layout">
+        {/*
+          Order summary is first in the DOM (not the form) so it's what a
+          visitor sees first when this stacks on mobile — the desktop
+          `order` CSS below puts it back on the right, beside the form, as
+          a sticky sidebar (that part was already decided; only the
+          reading order changes).
+        */}
+        <aside className="public-order-summary">
+          <h2>Order summary</h2>
+          <ul className="public-summary-lines">
+            {cart.map((line) => (
+              <li key={line.key}>
+                <span>{line.quantity}× {line.name} <small>{line.color}</small></span>
+                <strong>{money(line.price * line.quantity)}</strong>
+              </li>
+            ))}
+          </ul>
+          <div className="public-total"><span>Order total</span><strong>{money(total)}</strong></div>
+          <div className="public-deposit is-compact"><span>Pay now</span><strong>{money(total / 2)}</strong><p>The other {money(total / 2)} is due before fulfilment. Shipping is separate and confirmed if selected.</p></div>
+        </aside>
+
         <form className="public-checkout-form" onSubmit={submit}>
           <Step number={1} title="Contact information">
             <label>Full name<input autoComplete="name" value={form.name} onChange={(event) => set("name", event.target.value)} required /></label>
             <label>Email<input type="email" autoComplete="email" value={form.email} onChange={(event) => set("email", event.target.value)} required /></label>
             <label>Phone<input type="tel" autoComplete="tel" value={form.phone} onChange={(event) => set("phone", event.target.value)} required /></label>
+            <label>
+              Facebook name or profile link
+              <input value={form.facebookContact} onChange={(event) => set("facebookContact", event.target.value)} placeholder="e.g. facebook.com/yourname" required />
+            </label>
+            <p className="public-field-note">We'll match your Messenger message to this order by this name or link.</p>
           </Step>
 
           <Step number={2} title="Fulfilment">
@@ -1445,12 +1494,60 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
                       <input inputMode="numeric" autoComplete="postal-code" value={form.zip} onChange={(event) => set("zip", event.target.value)} required />
                     </label>
                   </div>
+
+                  <div className="public-recipient-head">
+                    <span>Recipient</span>
+                    <button
+                      type="button"
+                      className={`public-recipient-toggle ${form.recipientSameAsContact ? "is-active" : ""}`}
+                      onClick={() => set("recipientSameAsContact", !form.recipientSameAsContact)}
+                      aria-pressed={form.recipientSameAsContact}
+                    >
+                      {form.recipientSameAsContact && <Check size={12} />} Same as contact info
+                    </button>
+                  </div>
+                  <label>
+                    Recipient name
+                    <input
+                      value={form.recipientSameAsContact ? form.name : form.recipientName}
+                      onChange={(event) => set("recipientName", event.target.value)}
+                      disabled={form.recipientSameAsContact}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Recipient phone
+                    <input
+                      type="tel"
+                      value={form.recipientSameAsContact ? form.phone : form.recipientPhone}
+                      onChange={(event) => set("recipientPhone", event.target.value)}
+                      disabled={form.recipientSameAsContact}
+                      required
+                    />
+                  </label>
                 </motion.div>
               )}
             </AnimatePresence>
           </Step>
 
-          <Step number={3} title="Scan to pay">
+          <Step number={3} title="Payment summary">
+            <ul className="public-summary-lines">
+              {cart.map((line) => (
+                <li key={line.key}>
+                  <span>{line.quantity}× {line.name} <small>{line.color}</small></span>
+                  <strong>{money(line.price * line.quantity)}</strong>
+                </li>
+              ))}
+            </ul>
+            <div className="public-total"><span>Subtotal</span><strong>{money(total)}</strong></div>
+            <div className="public-deposit is-compact">
+              <span>Downpayment due (50%)</span>
+              <strong>{money(total / 2)}</strong>
+              <p>Balance (due later): {money(total / 2)}</p>
+            </div>
+          </Step>
+
+          <Step number={4} title="Scan to pay">
             <div className="public-payment-methods" aria-label="Choose a payment QR">
               <p className="public-payment-label">Choose where you paid</p>
               <div className="public-payment-cards">
@@ -1469,32 +1566,36 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
             </div>
           </Step>
 
-          <Step number={4} title="Proof of payment">
+          <Step number={5} title="Proof of payment">
             <label className={`public-upload ${form.proof ? "has-file" : ""}`}>
               <ImageSquare size={22} />
               <span><b>{form.proof ? "Proof added" : "Upload proof of payment"}</b><small>{form.proofName || "JPG, PNG, or PDF, up to 5 MB"}</small></span>
               <input type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; chooseProof(file); }} />
             </label>
-            <p className="public-proof-note">After submitting, keep your receipt ready. If your order workflow provides a configured Messenger contact, use it to send the same proof and confirm your order number.</p>
+
+            <div className="public-messenger-box">
+              <b>Also required: send your proof on Messenger</b>
+              <ol>
+                <li>Tap the button below to open Messenger.</li>
+                <li>Send the same payment screenshot to Paddle To Go.</li>
+                <li>Come back here and check the box confirming you sent it.</li>
+              </ol>
+              <a className="public-messenger-link" href={PTG_MESSENGER_URL} target="_blank" rel="noreferrer">
+                Open Messenger <ArrowRight size={15} />
+              </a>
+            </div>
+            <label className="public-ack">
+              <input type="checkbox" checked={form.messengerSent} onChange={(event) => set("messengerSent", event.target.checked)} />
+              <span>I've sent my payment proof to Paddle To Go on Messenger.</span>
+            </label>
           </Step>
 
-          <label className="public-ack"><input type="checkbox" checked={form.acknowledged} onChange={(event) => set("acknowledged", event.target.checked)} /><span>I understand this order is <b>non-refundable and non-cancellable</b>.</span></label>
+          <label className="public-ack public-ack-warning">
+            <input type="checkbox" checked={form.acknowledged} onChange={(event) => set("acknowledged", event.target.checked)} />
+            <span>Placing this order is final — I've reviewed my items and accept that it's <b>non-refundable and non-cancellable</b>.</span>
+          </label>
           <button type="submit" className="public-primary" disabled={busy}>{busy ? "Placing order…" : `Place order · Pay ${money(total / 2)}`} <ArrowRight size={18} /></button>
         </form>
-
-        <aside className="public-order-summary">
-          <h2>Order summary</h2>
-          <ul className="public-summary-lines">
-            {cart.map((line) => (
-              <li key={line.key}>
-                <span>{line.quantity}× {line.name} <small>{line.color}</small></span>
-                <strong>{money(line.price * line.quantity)}</strong>
-              </li>
-            ))}
-          </ul>
-          <div className="public-total"><span>Order total</span><strong>{money(total)}</strong></div>
-          <div className="public-deposit is-compact"><span>Pay now</span><strong>{money(total / 2)}</strong><p>The other {money(total / 2)} is due before fulfilment. Shipping is separate and confirmed if selected.</p></div>
-        </aside>
       </div>
     </main>
   );

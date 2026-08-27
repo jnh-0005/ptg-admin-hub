@@ -163,9 +163,17 @@ export async function createOrder(db, body) {
   // `notes` as JSON, or "view payment proof" in the admin app shows nothing.
   const proofUrl = cleanText(body.payment_proof_url, MAX_PROOF_URL_CHARS) || null;
   const isShipping = body.fulfillment_method === "shipping";
-  const note = isShipping
-    ? "Shipping fee to be confirmed by Paddle To Go."
-    : "Customer selected pickup.";
+  // The storefront collects a Facebook name/profile link and (for shipping)
+  // a recipient — neither has a dedicated orders column, so they land in
+  // notes, the same free-text field the admin already reads for fulfilment
+  // context. Purely additive: an old client that never sends these fields
+  // still gets the original two-sentence note.
+  const noteParts = [isShipping ? "Shipping fee to be confirmed by Paddle To Go." : "Customer selected pickup."];
+  const facebookContact = cleanText(customer.facebook, 200);
+  if (facebookContact) noteParts.push(`Facebook: ${facebookContact}`);
+  const recipient = cleanText(customer.recipient, 200);
+  if (isShipping && recipient) noteParts.push(`Recipient: ${recipient}`);
+  const note = noteParts.join(" ");
   const shippingAddress = isShipping ? cleanText(customer.address, 500) || null : null;
   const inserted = await db.query(`INSERT INTO orders (order_number, order_date, customer_name, customer, customer_email, customer_phone, shipping_address, channel, status, payment_requirement, shipping_income_php, notes, sale_total, product_cost, shipping_cost, profit, order_type, fulfillment_method, payment_proof_url, acknowledgment)
     VALUES (?, CURRENT_DATE, ?, ?, ?, ?, ?, 'Storefront', 'Pending', 'deposit', ?, ?, ?, ?, ?, ?, 'Batch', ?, ?, ?)`, [orderNumber, cleanText(customer.name, 120), cleanText(customer.name, 120), cleanText(customer.email, 200), cleanText(customer.phone, 40), shippingAddress, shipping, note, total, lines.reduce((s, l) => s + l.cost * l.quantity, 0), shipping, 0, body.fulfillment_method, proofUrl, "Customer accepted non-refundable/non-cancellable acknowledgment"]);

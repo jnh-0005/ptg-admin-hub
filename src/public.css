@@ -355,7 +355,10 @@ button.public-product-compare-link:disabled{opacity:.4}
 .public-step-body label:not(.public-upload):not(.public-ack){display:grid;gap:5px;color:var(--muted);font-size:9px;font-weight:700}
 .public-step-body input:not([type=checkbox]):not([type=file]),.public-step-body textarea,.public-step-body select{width:100%;min-height:43px;padding:10px 11px;border:1px solid var(--line);border-radius:9px;outline:none;background:#f9fbfa;color:var(--ink);font-size:12px}
 .public-step-body textarea{min-height:70px;resize:vertical}
-.public-step-body select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2362736f' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+/* padding-right clears the arrow icon; text-overflow+nowrap+hidden keeps a
+   long value (Philippine region names run 30+ characters) truncating with
+   an ellipsis instead of running underneath/behind the arrow. */
+.public-step-body select{appearance:none;padding-right:30px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2362736f' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
 .public-step-body select:disabled{opacity:.55}
 .public-step-body input:focus,.public-step-body textarea:focus,.public-step-body select:focus{border-color:var(--teal);box-shadow:0 0 0 3px #0b77751c}
 /* Region and ZIP each take their own full-width row; City/Municipality and
@@ -385,9 +388,23 @@ button.public-product-compare-link:disabled{opacity:.4}
 .public-upload b{font-size:11px}
 .public-upload small{max-width:100%;overflow:hidden;color:var(--muted);font-size:8px;text-overflow:ellipsis;white-space:nowrap}
 .public-upload input{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0}
-.public-proof-note{margin:0;padding:0 2px;color:var(--muted);font-size:9px;line-height:1.45}
+.public-proof-note,.public-field-note{margin:0;padding:0 2px;color:var(--muted);font-size:9px;line-height:1.45}
 .public-ack{display:flex;align-items:flex-start;gap:9px;padding:12px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:10px;line-height:1.45}
 .public-ack input{width:18px;height:18px;flex:0 0 18px;margin:0;accent-color:var(--teal)}
+/* The final non-refundable acknowledgment gets a warning-toned border to
+   set it apart from the routine "I sent my proof" checkbox above it. */
+.public-ack-warning{border-color:#e3b8b8;background:#fdf4f4}
+
+.public-recipient-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px}
+.public-recipient-head>span{color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+button.public-recipient-toggle{display:flex;align-items:center;gap:5px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:9px;font-weight:700}
+button.public-recipient-toggle.is-active{border-color:var(--teal);background:#eff8f6;color:var(--teal)}
+
+.public-messenger-box{display:grid;gap:8px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.public-messenger-box>b{font-size:11px}
+.public-messenger-box ol{margin:0;padding-left:18px;color:var(--muted);font-size:10px;line-height:1.6}
+a.public-messenger-link{display:flex;width:fit-content;align-items:center;gap:7px;padding:10px 16px;border-radius:999px;background:var(--forest);color:#fff;font-size:11px;font-weight:700}
+a.public-messenger-link:hover{background:var(--teal)}
 
 /* ── Order confirmation ────────────────────────────────────────────── */
 .public-success-icon{display:grid;width:52px;height:52px;margin:0 auto 6px;place-items:center;border-radius:50%;background:#dfeeea;color:var(--forest)}
@@ -413,7 +430,12 @@ button.public-product-compare-link:disabled{opacity:.4}
   .public-product-backdrop{min-height:56svh}
   .public-cart-layout{grid-template-columns:1fr 320px}
   .public-order-summary{position:sticky;top:88px}
+  /* .public-order-summary is first in the DOM (so it's first on a stacked
+     mobile screen), but it still belongs visually on the right at desktop —
+     `order` puts it back there without touching the DOM/reading order. */
   .public-checkout-layout{grid-template-columns:1fr 320px}
+  .public-checkout-layout .public-checkout-form{order:1}
+  .public-checkout-layout .public-order-summary{order:2}
   .public-footer{grid-template-columns:1.4fr auto auto;align-items:start}
 }
 @media(min-width:960px){
