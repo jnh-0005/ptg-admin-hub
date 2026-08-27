@@ -492,8 +492,11 @@ function BackToTop() {
 function Layout({ cartCount, compareCount = 0 }) {
   const location = useLocation();
   // No point telling someone "N paddles selected, go compare" while they're
-  // already looking at the compare page.
-  const onComparePage = location.pathname.endsWith("/compare");
+  // already on the compare page — or mid-checkout, where it's just noise
+  // competing with "Continue to checkout"/"Place order" for the same fixed
+  // bottom-of-screen spot. Shown only on the shop grid and product pages,
+  // where comparing is actually the next thing someone might do.
+  const hideCompareBar = /\/(compare|cart|checkout|order)(\/|$)/.test(location.pathname);
 
   // React Router doesn't reset scroll position on navigation the way a real
   // page load does. Without this, following a link from partway down a tall
@@ -522,7 +525,7 @@ function Layout({ cartCount, compareCount = 0 }) {
       <Outlet context={{}} />
 
       <AnimatePresence>
-        {compareCount > 0 && !onComparePage && (
+        {compareCount > 0 && !hideCompareBar && (
           // The anchor (fixed + translateX(-50%)) does the horizontal
           // centering and is never animated; framer-motion's own inline
           // transform lives only on the child it slides up, so the two
