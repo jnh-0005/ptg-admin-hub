@@ -952,6 +952,11 @@ function ComparePage({ compareIds, toggleCompare }) {
     );
   }
 
+  // Only build a Specifications section if at least one selected paddle has
+  // a real, sourced spec — an empty section would just be a wall of "—".
+  const specs = selected.map((product) => specFor(product.name));
+  const hasAnySpec = specs.some(Boolean);
+
   return (
     <main className="public-main">
       <section className="public-page-head public-page-head-compact">
@@ -982,20 +987,69 @@ function ComparePage({ compareIds, toggleCompare }) {
               <span className={`public-inline-badge ${inStock ? "" : "is-preorder"}`}>
                 {inStock ? "In stock" : "Pre-order"}
               </span>
-              <ul className="public-compare-colours">
-                {product.choices.map((choice) => (
-                  <li key={choice.id || choice.color}>
-                    <span>{choice.color}</span>
-                    <small>{available(choice) ? "In stock" : "Pre-order"}</small>
-                  </li>
-                ))}
-              </ul>
               <Link to={`../paddle/${product.id}`} className="public-secondary-link">
                 View paddle <ArrowRight size={13} />
               </Link>
             </article>
           );
         })}
+      </div>
+
+      <div className="public-compare-table-wrap">
+        <table className="public-compare-table">
+          <tbody>
+            <tr>
+              <th scope="row">Category</th>
+              {selected.map((product) => <td key={product.id}>{product.category || "—"}</td>)}
+            </tr>
+            <tr>
+              <th scope="row">Brand</th>
+              {selected.map((product) => <td key={product.id}>{product.brand}</td>)}
+            </tr>
+            <tr>
+              <th scope="row">Price</th>
+              {selected.map((product) => {
+                const prices = product.choices.map((choice) => choice.price);
+                const low = Math.min(...prices);
+                const high = Math.max(...prices);
+                return <td key={product.id}>{low === high ? money(low) : `${money(low)} – ${money(high)}`}</td>;
+              })}
+            </tr>
+            <tr>
+              <th scope="row">Colours</th>
+              {selected.map((product) => (
+                <td key={product.id}>
+                  {product.choices.map((choice) => (
+                    <div key={choice.id || choice.color} className="public-compare-colour-row">
+                      <span>{choice.color}</span>
+                      <small>{available(choice) ? "In stock" : "Pre-order"}</small>
+                    </div>
+                  ))}
+                </td>
+              ))}
+            </tr>
+
+            {hasAnySpec && (
+              <>
+                <tr className="public-compare-section">
+                  <th colSpan={selected.length + 1}>Specifications</th>
+                </tr>
+                <tr>
+                  <th scope="row">Core</th>
+                  {selected.map((product, i) => <td key={product.id}>{specs[i]?.core || "—"}</td>)}
+                </tr>
+                <tr>
+                  <th scope="row">Surface</th>
+                  {selected.map((product, i) => <td key={product.id}>{specs[i]?.surface || "—"}</td>)}
+                </tr>
+                <tr>
+                  <th scope="row">Weight</th>
+                  {selected.map((product, i) => <td key={product.id}>{specs[i]?.weight || "—"}</td>)}
+                </tr>
+              </>
+            )}
+          </tbody>
+        </table>
       </div>
     </main>
   );
