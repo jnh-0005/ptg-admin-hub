@@ -155,6 +155,18 @@ button.public-compare-clear:hover{color:#b23}
   from selected.length in JSX.
 */
 @media(max-width:639px){
+  /*
+    1 or 2 selected: cap the card width and center the row, same idea as the
+    desktop fix — the base repeat(2,minmax(0,1fr)) rule stretches a single
+    selected paddle to fill half the screen (stuck against the left edge,
+    the other column empty) and stretches 2 to fill it completely edge to
+    edge. Capping + centering reads as an intentional, balanced layout at
+    either count instead of "half-empty" or "wall to wall."
+  */
+  .public-compare-grid[data-count="1"],.public-compare-grid[data-count="2"]{
+    grid-template-columns:repeat(auto-fit,minmax(140px,160px));
+    justify-content:center;
+  }
   .public-compare-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
   .public-compare-grid[data-count="3"] .public-compare-card{padding:6px;gap:3px}
   .public-compare-grid[data-count="3"] .public-compare-card h2{font-size:10px;line-height:1.25}
