@@ -197,7 +197,12 @@ const PADDLES = [
   { name: "RPM Q2", sku: "PTG-RQ2", price: 11900 },
   { name: "RPM V2", sku: "PTG-RV2", price: 12900 },
   { name: "Zocker Aspire", sku: "PTG-ZAS", price: 8900 },
-  { name: "Sypik Triton 5", sku: "PTG-TR5", price: 9500, aliases: ["Triton 5"] },
+  // No bare "Sypik Triton 5" entry — the real catalog only ever carries this
+  // paddle per-colour ("Sypik Triton 5 Jade Mist", "...Olive Dust", etc.),
+  // so a standalone "Sypik Triton 5" seed row never matched any of those
+  // names and kept getting recreated by seedCatalog() every cold start,
+  // no matter how many times it was deleted from Inventory. Removed
+  // outright rather than deleted again.
   { name: "Joola V Persus", sku: "PTG-JVP", price: 15000 },
   { name: "Joola IV", sku: "PTG-JIV", price: 13500 },
 ];
