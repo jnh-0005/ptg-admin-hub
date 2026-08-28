@@ -108,6 +108,27 @@ describe("storefront api security helpers", () => {
     expect(publicPhoto({ photo_url: "javascript:alert(1)" })).toBeNull();
     expect(publicPhoto({ photo_url: "https://cdn.example/paddle.webp" })).toBe("https://cdn.example/paddle.webp");
   });
+
+  // Real bug: a photo taken/picked in the admin's "Manage storefront photos"
+  // screen (as opposed to a pasted hosted URL) is stored as a data: URI by
+  // src/lib/storefront.js's compactImage() — the admin's own safePhotoUrl
+  // accepts that shape and marks it approved, but publicPhoto() only ever
+  // accepted https://, /images/, or /assets/, so an uploaded photo silently
+  // never reached the storefront even after approval.
+  it("accepts an inline data: URI the same shape compactImage() produces", () => {
+    const inline = "data:image/webp;base64," + "A".repeat(200);
+    expect(publicPhoto({ photo_url: inline })).toBe(inline);
+  });
+
+  it("still rejects a data: URI that isn't a real inline image (e.g. an SVG XSS payload)", () => {
+    expect(publicPhoto({ photo_url: "data:image/svg+xml;base64,PHNjcmlwdD4=" })).toBeNull();
+    expect(publicPhoto({ photo_url: "data:text/html;base64,PHNjcmlwdD4=" })).toBeNull();
+  });
+
+  it("rejects an inline photo over the size cap", () => {
+    const tooLong = "data:image/webp;base64," + "A".repeat(200_000);
+    expect(publicPhoto({ photo_url: tooLong })).toBeNull();
+  });
 });
 
 describe("createOrder pre-order rule", () => {

@@ -83,8 +83,19 @@ export function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(Str
 export function cleanText(value, max) { return String(value || "").trim().replace(/[<>]/g, "").slice(0, max); }
 export function positiveInt(value) { return Number.isInteger(value) && value > 0 && value <= 20; }
 
+// Matches src/lib/storefront.js's INLINE_IMAGE_RE exactly — a photo taken or
+// picked in the admin's "Manage storefront photos" screen goes through that
+// file's compactImage(), which stores it as a data: URI, not a hosted URL.
+// This function used to only accept https://, /images/, or /assets/, so an
+// uploaded (rather than pasted-URL) photo passed admin approval — safePhotoUrl
+// there accepts the same data: shape — but publicCatalog() below silently
+// dropped it before it ever reached the storefront API response.
+const INLINE_IMAGE_RE = /^data:image\/(?:webp|jpeg|jpg|png);base64,[a-z0-9+/=]+$/i;
+const MAX_INLINE_PHOTO_CHARS = 160_000;
+
 export function publicPhoto(row) {
   const value = String(row.photo_url || "").trim();
+  if (INLINE_IMAGE_RE.test(value)) return value.length <= MAX_INLINE_PHOTO_CHARS ? value : null;
   return /^(https:\/\/|\/images\/|\/assets\/)[^\s<>"']+$/i.test(value) ? value : null;
 }
 
