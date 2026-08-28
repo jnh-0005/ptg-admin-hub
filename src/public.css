@@ -182,7 +182,11 @@ a.public-back-link{display:flex;width:fit-content;align-items:center;gap:6px;mar
    a taller frame gives it real room, closer to how a photo-led catalog
    card usually treats a narrow product like a paddle. */
 .public-card-image{position:relative;aspect-ratio:3/4;overflow:hidden;border-radius:var(--r-md);background:#eeece5;padding:8px}
-.public-card-image>img,.public-product-image>img,.public-cart-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .5s cubic-bezier(.25,1,.5,1)}
+.public-card-image>img,.public-cart-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .5s cubic-bezier(.25,1,.5,1)}
+/* Product detail hero: the real supplier photo, not a uniform grid tile —
+   contain so the whole paddle always shows, never cropped to fill the
+   square backdrop (mobile and desktop both use this same rule). */
+.public-product-image>img{width:100%;height:100%;object-fit:contain;transition:transform .5s cubic-bezier(.25,1,.5,1)}
 .public-card-image>img{border-radius:calc(var(--r-md) - 6px)}
 .public-card:hover .public-card-image>img{transform:scale(1.045)}
 .public-card-badge{position:absolute;top:10px;left:10px;padding:4px 9px;border-radius:999px;background:#fffffff2;color:var(--teal);font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
