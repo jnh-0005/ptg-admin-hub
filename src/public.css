@@ -544,6 +544,11 @@ a.public-messenger-link:hover{background:var(--forest)}
 
   .public-product-stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start;max-width:1280px;margin:0 auto;padding:36px max(18px,calc((100vw - 1280px)/2)) 64px}
   .public-product-backdrop{position:sticky;top:96px;min-height:0;aspect-ratio:1;border-radius:var(--r-md)}
+  /* The mobile 320px cap (below) is sized for a phone-width backdrop; left
+     unset here it stranded the photo as a small box in a sea of gradient
+     on a desktop-width column. Fill the backdrop instead — object-fit:
+     contain on the img itself still keeps the whole photo visible. */
+  .public-product-backdrop .public-product-image{width:100%;height:100%;max-width:none}
   .public-product-back{display:none}
   .public-product-sheet{margin-top:0;padding:0;border-radius:0;background:transparent}
   .public-product-thumbs{display:flex;flex-wrap:wrap;gap:9px;position:absolute;left:18px;right:18px;bottom:18px;z-index:2}
