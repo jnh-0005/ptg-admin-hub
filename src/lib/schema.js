@@ -262,9 +262,32 @@ async function runBatch(statements) {
   return out;
 }
 
+// Bump this whenever LEGACY_TABLES/NEW_TABLES/ADDED_COLUMNS/PADDLES/ADDONS
+// change, so the fast path below correctly falls through and re-runs setup
+// on databases stamped with an older version. Forgetting to bump it means a
+// new column or seed entry silently never reaches an already-initialized
+// database.
+const INIT_VERSION = "2026-08-28.1";
+
 export function initDb() {
   if (!ready) {
     ready = (async () => {
+      // Fast path: skip CREATE TABLE, migrate() (which alone does a round
+      // trip per table just to check its columns, every single call), and
+      // both seeders entirely once this database is already at the current
+      // version -- one cheap SELECT instead. Before this, initDb() paid
+      // 25-40+ sequential Postgres round trips on EVERY cold start (which on
+      // Vercel is most requests for a low-traffic app), which is what made
+      // every page load and every click-to-save in the admin feel slow --
+      // not any one screen, the shared init path every page runs first.
+      try {
+        const { rows } = await query("SELECT value FROM app_meta WHERE key = 'init_version'");
+        if (rows[0]?.value === INIT_VERSION) return;
+      } catch {
+        // app_meta itself doesn't exist yet on a brand-new database --
+        // fall through to full setup, which creates it.
+      }
+
       await runBatch([...LEGACY_TABLES, ...NEW_TABLES].map((sql) => ({ sql })));
 
       await migrate();
@@ -282,6 +305,11 @@ export function initDb() {
 
       await seedFreebies();
       await seedCatalog();
+
+      await query("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)", [
+        "init_version",
+        INIT_VERSION,
+      ]);
     })().catch((err) => {
       // Let the next caller retry instead of caching a failed init forever.
       ready = null;
