@@ -3,7 +3,11 @@
   --forest:#123d36;--teal:#0b7775;--paper:#f5f7f6;--surface:#fff;
   --line:#d9e3e0;--ink:#17312d;--muted:#62736f;
   --r-sm:7px;--r-md:14px;
-  min-height:100svh;background:var(--paper);color:var(--ink);font-family:"Poppins",system-ui,sans-serif;
+  /* Plain white page background, not the off-white --paper — --paper stays
+     as-is everywhere else (product sheet, deposit box, upload dropzone,
+     etc.), where it's the subtle panel-vs-page contrast, not the page
+     itself. */
+  min-height:100svh;background:var(--surface);color:var(--ink);font-family:"Poppins",system-ui,sans-serif;
 }
 .public-shell *{box-sizing:border-box}
 .public-shell button,.public-shell input,.public-shell textarea,.public-shell select{font:inherit}
