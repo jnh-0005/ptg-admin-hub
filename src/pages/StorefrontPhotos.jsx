@@ -116,19 +116,61 @@ const isPickedPhoto = (value) => {
 };
 
 /**
- * The compaction ladder. A modern phone shoots 12MP, which is far past the
- * ceiling even as WebP, so one pass at one size is not a guarantee — it is a
- * coin flip that lands the operator on "that image is still too large" with no
- * way forward. Each rung halves the work: 720px at q0.72 is the intended
- * result, and the smaller rungs exist only so an enormous source still ends up
- * stored rather than refused.
+ * The compaction ladder, at Instagram's own 4:5 portrait ratio (1080×1350
+ * scaled down) — not a square. A modern phone shoots 12MP, which is far past
+ * the ceiling even as WebP, so one pass at one size is not a guarantee — it
+ * is a coin flip that lands the operator on "that image is still too large"
+ * with no way forward. Each rung halves the work: 576×720 at q0.72 is the
+ * intended result — a standard, uniform 4:5 frame every stored photo now
+ * shares — and the smaller rungs exist only so an enormous source still ends
+ * up stored rather than refused.
  */
 const COMPACT_STEPS = [
-  { max: 720, quality: 0.72 },
-  { max: 640, quality: 0.66 },
-  { max: 512, quality: 0.6 },
-  { max: 420, quality: 0.55 },
+  { width: 576, height: 720, quality: 0.72 },
+  { width: 512, height: 640, quality: 0.66 },
+  { width: 410, height: 512, quality: 0.6 },
+  { width: 336, height: 420, quality: 0.55 },
 ];
+
+/**
+ * Composite an already-loaded image onto a plain white 4:5-PORTRAIT canvas —
+ * centered and scaled to fit, never cropped — instead of the previous
+ * scale-to-original-aspect-ratio canvas. White is painted first, so any
+ * transparent source (a PNG/WebP with alpha) becomes plain white background
+ * automatically, never a checkerboard or black fill; a source that's already
+ * a photo with its own background is still framed the same uniform 4:5
+ * portrait, just with that background intact (true background *removal* —
+ * cutting out an existing photographed background — needs real subject
+ * segmentation, which this plain canvas logic can't do). Steps down the same
+ * size ladder as before if the compressed result is still over the storage
+ * cap.
+ */
+function compactImageElement(image) {
+  const canvas = document.createElement("canvas");
+  let smallest = "";
+  for (const { width, height, quality } of COMPACT_STEPS) {
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+    const drawWidth = Math.max(1, Math.round(image.naturalWidth * scale));
+    const drawHeight = Math.max(1, Math.round(image.naturalHeight * scale));
+    const dx = Math.round((width - drawWidth) / 2);
+    const dy = Math.round((height - drawHeight) / 2);
+    ctx.drawImage(image, dx, dy, drawWidth, drawHeight);
+    // WebP is the target; a browser that cannot encode it answers with a
+    // PNG data URL, which `safePhotoUrl` accepts just the same.
+    const data = canvas.toDataURL("image/webp", quality);
+    smallest = data;
+    if (withinStoreLimit(data)) return data;
+  }
+  throw new Error(
+    `That photo is still ${Math.round(smallest.length / 1000).toLocaleString()}k after resizing. Choose a smaller one.`,
+  );
+}
 
 /** Resize a phone image before storing it, keeping the SQLite argument small. */
 function compactImage(file) {
@@ -139,33 +181,40 @@ function compactImage(file) {
       const image = new Image();
       image.onerror = () => reject(new Error("That image could not be decoded."));
       image.onload = () => {
-        const canvas = document.createElement("canvas");
-        let smallest = "";
-        for (const { max, quality } of COMPACT_STEPS) {
-          const scale = Math.min(1, max / Math.max(image.naturalWidth, image.naturalHeight));
-          canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-          canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-          const ctx = canvas.getContext("2d");
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-          // WebP is the target; a browser that cannot encode it answers with a
-          // PNG data URL, which `safePhotoUrl` accepts just the same.
-          const data = canvas.toDataURL("image/webp", quality);
-          smallest = data;
-          if (withinStoreLimit(data)) {
-            resolve(data);
-            return;
-          }
+        try {
+          resolve(compactImageElement(image));
+        } catch (err) {
+          reject(err);
         }
-        reject(
-          new Error(
-            `That photo is still ${Math.round(smallest.length / 1000).toLocaleString()}k after resizing. Choose a smaller one.`,
-          ),
-        );
       };
       image.src = String(reader.result);
     };
     reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * The same white-square treatment a picked file gets, but for a pasted
+ * hosted address — loaded with `crossOrigin: "anonymous"` so the canvas
+ * isn't tainted. Many third-party hosts don't send the CORS header this
+ * needs, in which case the browser fails the load (or, on some hosts,
+ * `toDataURL` throws instead) — callers must treat *any* rejection here as
+ * "couldn't standardize this one automatically" and fall back to storing the
+ * original link untouched, not as a hard error blocking the save.
+ */
+function compactImageFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onerror = () => reject(new Error("cors_or_network"));
+    image.onload = () => {
+      try {
+        resolve(compactImageElement(image));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    image.src = url;
   });
 }
 
@@ -210,9 +259,11 @@ function targetOf(row) {
 }
 
 /**
- * THE SQUARE CROP, AND IT IS THE SAME CROP THE SHOP USES. `aspect-square` plus
- * `object-cover` here and on the storefront means the preview an operator
- * approves is framed exactly like the tile a customer sees.
+ * A compact square icon for scanning a list of many photos at once — this is
+ * an admin-only convenience, not a claim about the shop's own framing. The
+ * storefront itself shows a stored photo with object-fit: contain (see
+ * public.css), never cropped, at whatever 4:5-ish shape it was saved in;
+ * this thumbnail's own square + object-cover crop is unrelated to that.
  *
  * A photo well NEVER STAYS STUCK LOADING: every path out is covered — onLoad,
  * onError, an image already decoded when the effect ran (a cached src fires no
@@ -803,6 +854,9 @@ function MapTray({ open, seed, options, index, origin, busy, onClose, onSave, on
   const [linkOpen, setLinkOpen] = useState(false);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  /** Only true while a hosted URL is being run through the same white 4:5
+      compositing a picked file gets, at submit time. */
+  const [standardizing, setStandardizing] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -927,10 +981,27 @@ function MapTray({ open, seed, options, index, origin, busy, onClose, onSave, on
       //
       // `valid` is what goes out, not the raw field: the only thing that can
       // reach the action is a value `safePhotoUrl` has already accepted.
+      let photoUrl = valid;
+      // A plain hosted URL (not already a picked/compacted photo) gets the
+      // same white 4:5 treatment a file upload gets, so a photo ends up the
+      // same shape no matter which of the two ways it arrived. Many
+      // third-party hosts don't send the CORS header this needs — that's not
+      // an error, it just means this one can't be standardized here, so the
+      // original link is kept exactly as before.
+      if (!uploaded && /^https?:\/\//i.test(photoUrl)) {
+        setStandardizing(true);
+        try {
+          photoUrl = await compactImageFromUrl(photoUrl);
+        } catch {
+          // Fall back to the original hosted link, unchanged.
+        } finally {
+          setStandardizing(false);
+        }
+      }
       await onSave({
         identityType: scopeMeta.stored,
         identityKey: key,
-        photoUrl: valid,
+        photoUrl,
         sourceLabel: label,
       });
     } catch (err) {
@@ -963,11 +1034,17 @@ function MapTray({ open, seed, options, index, origin, busy, onClose, onSave, on
             type="submit"
             form="storefront-photo-form"
             className="btn-primary flex-1"
-            disabled={saving || busy || reading}
+            disabled={saving || busy || reading || standardizing}
           >
-            {/* One stem, three states: "Save for approval" → "Saving for approval…". */}
+            {/* One stem, four states: "Save for approval" → "Saving for approval…". */}
             <MorphLabel>
-              {saving ? "Saving for approval…" : reading ? "Checking photo…" : "Save for approval"}
+              {standardizing
+                ? "Standardizing photo…"
+                : saving
+                  ? "Saving for approval…"
+                  : reading
+                    ? "Checking photo…"
+                    : "Save for approval"}
             </MorphLabel>
           </button>
         </div>
@@ -1110,9 +1187,11 @@ function MapTray({ open, seed, options, index, origin, busy, onClose, onSave, on
         </div>
 
         {/*
-          THE SQUARE CROP PREVIEW, and it GROWS IN the moment there is something
-          to preview. It is the same aspect-square/object-cover framing the shop
-          tile uses, so what is approved here is what a customer gets.
+          THE PREVIEW, and it GROWS IN the moment there is something to
+          preview. It's a small square icon for scanning it here (see Thumb),
+          not a claim about the shop's own framing — the storefront shows the
+          saved photo uncropped (object-fit: contain), at the white 4:5 shape
+          compactImageElement() saves it in.
         */}
         <AnimatePresence initial={false}>
           {valid && (
@@ -1126,9 +1205,11 @@ function MapTray({ open, seed, options, index, origin, busy, onClose, onSave, on
               <div className="flex items-center gap-3 rounded-md border border-line bg-paper p-2.5">
                 <Thumb src={valid} size="lg" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-micro font-medium text-ink-2">Square crop preview</p>
+                  <p className="text-micro font-medium text-ink-2">Preview</p>
                   <p className="mt-0.5 text-micro leading-relaxed text-ink-3">
-                    Exactly how the shop tile frames it for {scopeMeta.noun}, once you approve it.
+                    Saved on a plain white 4:5 frame for {scopeMeta.noun}, once you approve it. A
+                    hosted address is standardized the same way when you save, where the source
+                    allows it.
                   </p>
                 </div>
               </div>
