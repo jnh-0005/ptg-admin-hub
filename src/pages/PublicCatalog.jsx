@@ -285,12 +285,10 @@ const BRAND_LOGOS = {
   "Bread and Butter": "/images/brands/bread-and-butter.png",
   Sypik: "/images/brands/sypik.png",
   RPM: "/images/brands/rpm.png",
-  Joola: "/images/brands/joola.png",
   Selkirk: "/images/brands/selkirk.png",
   Wika: "/images/brands/wika.png",
   Kamito: "/images/brands/kamito.png",
   Honolulu: "/images/brands/honolulu.png",
-  Franklin: "/images/brands/franklin.png",
   Zocker: "/images/brands/zocker.png",
 };
 

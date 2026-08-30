@@ -103,7 +103,6 @@ export function resolvePhotoAssetUrl(value) {
 }
 
 export const KNOWN_BRANDS = [
-  "Franklin",
   "Kamito",
   "Selkirk",
   "Boomstick",
@@ -111,7 +110,6 @@ export const KNOWN_BRANDS = [
   "RPM",
   "Zocker",
   "Triton",
-  "Joola",
 ];
 
 export const HOUSE_BRAND = "Paddle To Go";

@@ -174,7 +174,6 @@ async function columnsOf(table) {
  * spelling into `aliases`, never replacing it.
  */
 const PADDLES = [
-  { name: "Franklin C45 ALW", sku: "PTG-C45", price: 11500 },
   { name: "Kamito Alpha X", sku: "PTG-KAX", price: 8900 },
   { name: "Selkirk Omni Clay", sku: "PTG-SOC", price: 18900 },
   { name: "Selkirk Boomstick Clay", sku: "PTG-BSC", price: 18900, aliases: ["Boomstick Clay"] },
@@ -203,8 +202,12 @@ const PADDLES = [
   // names and kept getting recreated by seedCatalog() every cold start,
   // no matter how many times it was deleted from Inventory. Removed
   // outright rather than deleted again.
-  { name: "Joola V Persus", sku: "PTG-JVP", price: 15000 },
-  { name: "Joola IV", sku: "PTG-JIV", price: 13500 },
+  //
+  // Franklin C45 ALW, Joola V Persus and Joola IV removed outright (not
+  // just deleted from Inventory) — Paddle To Go no longer sells either
+  // brand. Same reasoning as the Sypik Triton 5 fix above: leaving the
+  // entries here with the live rows deleted would have seedCatalog()
+  // silently recreate them on the next cold start.
 ];
 
 export const ADDON_CATEGORY = "Add-on";
