@@ -458,6 +458,11 @@ button.public-accordion-summary{display:flex;width:100%;align-items:center;justi
 .public-step-head h3{margin:0;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink)}
 .public-step-body{display:grid;gap:12px}
 .public-step-body label:not(.public-upload):not(.public-ack){display:grid;gap:6px;color:var(--muted);font-size:10px;font-weight:600}
+/* The asterisk sits inside the same first-line span as the label text — a
+   bare "*" child of a label:not(...):not(...) above would become its own
+   grid row (every direct child is a row under display:grid) and drop to a
+   line of its own instead of sitting next to the word it marks. */
+.public-required{margin-left:2px;color:#7a2323;font-weight:700}
 .public-step-body input:not([type=checkbox]):not([type=file]),.public-step-body textarea,.public-step-body select{width:100%;min-height:44px;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r-sm);outline:none;background:var(--surface);color:var(--ink);font-size:13px}
 .public-step-body textarea{min-height:72px;resize:vertical}
 .public-step-body select{appearance:none;padding-right:32px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236b6c68' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center}

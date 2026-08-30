@@ -2264,11 +2264,11 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
 
         <form className="public-checkout-form" onSubmit={submit}>
           <Step number={1} title="Contact information">
-            <label>Full name<input autoComplete="name" value={form.name} onChange={(event) => set("name", event.target.value)} required /></label>
-            <label>Email<input type="email" autoComplete="email" value={form.email} onChange={(event) => set("email", event.target.value)} required /></label>
-            <label>Phone<input type="tel" autoComplete="tel" value={form.phone} onChange={(event) => set("phone", event.target.value)} required /></label>
+            <label><span>Full name<span className="public-required">*</span></span><input autoComplete="name" value={form.name} onChange={(event) => set("name", event.target.value)} required /></label>
+            <label><span>Email<span className="public-required">*</span></span><input type="email" autoComplete="email" value={form.email} onChange={(event) => set("email", event.target.value)} required /></label>
+            <label><span>Phone<span className="public-required">*</span></span><input type="tel" autoComplete="tel" value={form.phone} onChange={(event) => set("phone", event.target.value)} required /></label>
             <label>
-              Facebook name or profile link
+              <span>Facebook name or profile link<span className="public-required">*</span></span>
               <input value={form.facebookContact} onChange={(event) => set("facebookContact", event.target.value)} placeholder="e.g. facebook.com/yourname" required />
             </label>
             <p className="public-field-note">We'll match your Messenger message to this order by this name or link.</p>
@@ -2282,10 +2282,10 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
             <AnimatePresence initial={false}>
               {form.fulfillment === "Shipping" && (
                 <motion.div className="public-address" initial={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0 }} transition={spring}>
-                  <label>Street address<textarea autoComplete="street-address" value={form.address} onChange={(event) => set("address", event.target.value)} required /></label>
+                  <label><span>Street address<span className="public-required">*</span></span><textarea autoComplete="street-address" value={form.address} onChange={(event) => set("address", event.target.value)} required /></label>
                   <div className="public-address-grid">
                     <label>
-                      Region
+                      <span>Region<span className="public-required">*</span></span>
                       <select value={form.regionCode} onChange={(event) => setRegion(event.target.value)} disabled={!phAddress} required>
                         <option value="" disabled>{phAddress ? "Select region" : "Loading regions…"}</option>
                         {phAddress?.PH_REGIONS.map((region) => (
@@ -2294,7 +2294,7 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
                       </select>
                     </label>
                     <label>
-                      City / Municipality
+                      <span>City / Municipality<span className="public-required">*</span></span>
                       <select value={form.cityCode} onChange={(event) => setCity(event.target.value)} disabled={!form.regionCode} required>
                         <option value="" disabled>{form.regionCode ? "Select city or municipality" : "Select region first"}</option>
                         {cityOptions.map((city) => (
@@ -2303,7 +2303,7 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
                       </select>
                     </label>
                     <label>
-                      Barangay
+                      <span>Barangay<span className="public-required">*</span></span>
                       <select value={form.barangay} onChange={(event) => set("barangay", event.target.value)} disabled={!form.cityCode} required>
                         <option value="" disabled>{form.cityCode ? "Select barangay" : "Select city first"}</option>
                         {barangayOptions.map((barangay) => (
@@ -2312,7 +2312,7 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
                       </select>
                     </label>
                     <label>
-                      ZIP code
+                      <span>ZIP code<span className="public-required">*</span></span>
                       <input inputMode="numeric" autoComplete="postal-code" value={form.zip} onChange={(event) => set("zip", event.target.value)} required />
                     </label>
                   </div>
@@ -2329,7 +2329,7 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
                     </button>
                   </div>
                   <label>
-                    Recipient name
+                    <span>Recipient name<span className="public-required">*</span></span>
                     <input
                       value={form.recipientSameAsContact ? form.name : form.recipientName}
                       onChange={(event) => set("recipientName", event.target.value)}
@@ -2338,7 +2338,7 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
                     />
                   </label>
                   <label>
-                    Recipient phone
+                    <span>Recipient phone<span className="public-required">*</span></span>
                     <input
                       type="tel"
                       value={form.recipientSameAsContact ? form.phone : form.recipientPhone}
