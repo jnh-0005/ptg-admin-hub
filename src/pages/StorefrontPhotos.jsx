@@ -193,29 +193,41 @@ function compactImage(file) {
   });
 }
 
-/**
- * The same white-square treatment a picked file gets, but for a pasted
- * hosted address — loaded with `crossOrigin: "anonymous"` so the canvas
- * isn't tainted. Many third-party hosts don't send the CORS header this
- * needs, in which case the browser fails the load (or, on some hosts,
- * `toDataURL` throws instead) — callers must treat *any* rejection here as
- * "couldn't standardize this one automatically" and fall back to storing the
- * original link untouched, not as a hard error blocking the save.
- */
-function compactImageFromUrl(url) {
+function loadImage(src, { crossOrigin } = {}) {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.onerror = () => reject(new Error("cors_or_network"));
-    image.onload = () => {
-      try {
-        resolve(compactImageElement(image));
-      } catch (err) {
-        reject(err);
-      }
-    };
-    image.src = url;
+    if (crossOrigin) image.crossOrigin = crossOrigin;
+    image.onerror = () => reject(new Error("image_load_failed"));
+    image.onload = () => resolve(image);
+    image.src = src;
   });
+}
+
+/**
+ * The same white-square treatment a picked file gets, but for a pasted
+ * hosted address. Tried two ways, in order:
+ *
+ * 1. Direct, with `crossOrigin: "anonymous"` — no extra network hop, works
+ *    whenever the source host sends the CORS header a cross-origin canvas
+ *    read needs.
+ * 2. Through `/api/photo-fetch`, our own same-origin proxy that fetches the
+ *    image server-side (a server-to-server request isn't subject to CORS at
+ *    all) and relays the bytes — same-origin `<img>` doesn't need the CORS
+ *    header either, so this standardizes a photo even when its host never
+ *    sends one. What's left after this isn't CORS, it's a genuine fetch
+ *    failure (dead link, not actually an image, too large) — callers must
+ *    still treat that as "couldn't standardize this one automatically" and
+ *    fall back to storing the original link untouched, not as a hard error
+ *    blocking the save.
+ */
+async function compactImageFromUrl(url) {
+  try {
+    const image = await loadImage(url, { crossOrigin: "anonymous" });
+    return compactImageElement(image);
+  } catch {
+    const image = await loadImage(`/api/photo-fetch?url=${encodeURIComponent(url)}`);
+    return compactImageElement(image);
+  }
 }
 
 /** A stored photo is a bound argument, so the ceiling is characters. */
