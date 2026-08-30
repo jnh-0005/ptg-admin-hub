@@ -28,7 +28,7 @@ export default function middleware(request) {
   if (!CRAWLER_UA.test(userAgent)) return; // let real visitors hit the SPA as normal
 
   const url = new URL(request.url);
-  const image = `${url.origin}/images/ptg-court-banner-v2.webp`;
+  const image = `${url.origin}/images/ptg-logo-og.png`;
   const escape = (value) => String(value).replace(/"/g, "&quot;");
 
   const html = `<!doctype html>
