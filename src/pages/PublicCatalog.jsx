@@ -1216,7 +1216,7 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
             // the only way to see actual search results.
             <ScrollRow ariaLabel="Featured paddles">
               {firstSlice.map((product) => (
-                <div className="public-scroll-item" key={product.id}>
+                <div className="public-scroll-item" role="listitem" key={product.id}>
                   <ProductCard
                     product={product}
                     addToCart={addToCart}

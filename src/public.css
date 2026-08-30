@@ -30,7 +30,7 @@ html.public-lock,html.public-lock body{overflow:hidden}
   transition:min-height .25s ease,box-shadow .25s ease;
 }
 .public-nav.is-scrolled{min-height:56px;box-shadow:0 8px 24px #0a221d26}
-.public-nav-brand{display:flex;align-items:center;flex:0 0 auto}
+.public-nav-brand{display:flex;min-width:24px;align-items:center;flex:0 0 auto}
 .public-nav-logo{display:block;width:auto;height:32px;object-fit:contain}
 .public-nav-links{position:relative;display:flex;align-items:center;flex:0 0 auto;gap:22px;margin-left:8px}
 .public-nav-links>div{position:relative}
@@ -136,15 +136,15 @@ a.public-back-link{display:flex;width:fit-content;align-items:center;gap:6px;mar
    treatment on this page belongs to Add to cart / quick-add only. */
 .public-category-row{display:flex;gap:20px;margin:14px 0 4px;overflow-x:auto;scrollbar-width:none}
 .public-category-row::-webkit-scrollbar{display:none}
-.public-category-row button{flex:0 0 auto;padding:6px 0;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font-size:12.5px;font-weight:600}
+.public-category-row button{flex:0 0 auto;min-width:24px;padding:6px 8px;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font-size:12.5px;font-weight:600}
 .public-category-row button.is-active{border-color:var(--teal);color:var(--ink)}
 .public-filter-bar{display:grid;gap:14px;margin:10px 0 28px;padding:0 0 20px;border-bottom:1px solid var(--line)}
 .public-search{display:flex;min-height:42px;align-items:center;gap:9px;padding:0 2px;border-bottom:1px solid var(--line);background:transparent;color:var(--muted)}
 .public-search:focus-within{border-color:var(--teal)}
-.public-search input{width:100%;border:0;outline:0;background:transparent;color:var(--ink);font-size:13px}
+.public-search input{width:100%;min-height:24px;border:0;outline:0;background:transparent;color:var(--ink);font-size:13px}
 .public-brand-row{display:flex;gap:18px;overflow-x:auto;scrollbar-width:none}
 .public-brand-row::-webkit-scrollbar{display:none}
-.public-brand-row button{flex:0 0 auto;padding:6px 0;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font-size:12px;font-weight:600}
+.public-brand-row button{flex:0 0 auto;min-width:24px;padding:6px 8px;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font-size:12px;font-weight:600}
 .public-brand-row button.is-active{border-color:var(--teal);color:var(--ink)}
 .public-sort{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:600;color:var(--muted)}
 .public-sort select{min-height:38px;padding:0 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);font-size:12px}
@@ -229,7 +229,7 @@ button.public-quick-add,a.public-quick-add{display:grid;width:34px;height:34px;f
 /* Compare sits on the photo itself (bottom-right), not a separate line under
    the price — frees up the card body and keeps every card's height driven
    by name/price alone. */
-button.public-card-compare{position:absolute;bottom:10px;right:10px;z-index:1;display:flex;align-items:center;gap:4px;padding:5px 10px;border:0;border-radius:999px;background:#fffffff2;color:var(--ink);font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+button.public-card-compare{position:absolute;bottom:10px;right:10px;z-index:1;display:flex;min-height:28px;align-items:center;gap:4px;padding:7px 10px;border:0;border-radius:999px;background:#fffffff2;color:var(--ink);font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
 button.public-card-compare.is-active{background:var(--teal);color:#fff}
 button.public-card-compare:disabled{opacity:.5}
 
@@ -323,9 +323,9 @@ button.public-load-more:hover{color:var(--teal)}
 .public-footer{display:grid;gap:24px;max-width:1280px;margin:0 auto;padding:40px 18px 56px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}
 .public-footer-brand img{width:auto;height:34px;object-fit:contain;filter:brightness(0);opacity:.8}
 .public-footer-brand p{margin:10px 0 0;max-width:280px;line-height:1.6}
-.public-footer-col{display:flex;flex-direction:column;gap:8px}
+.public-footer-col{display:flex;flex-direction:column;gap:0}
 .public-footer-col h3{margin:0 0 4px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink)}
-.public-footer-col a{font-size:11px}
+.public-footer-col a{display:block;padding:6px 0;font-size:11px}
 .public-footer-col a:hover{color:var(--teal)}
 .public-footer-note{align-self:end}
 

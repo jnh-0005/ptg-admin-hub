@@ -49,10 +49,16 @@ export default function LogoLoop({
     <div
       className={`logoloop ${fadeOut ? (fadeOutColor ? "is-fade-solid" : "is-fade-mask") : ""} ${pauseOnHover ? "is-pausable" : ""} ${className}`}
       style={style}
-      role="list"
-      aria-label={ariaLabel}
     >
-      <div className="logoloop-track">
+      {/* role="list"/"listitem" sit on the actual DOM parent/child pair
+          (track and its direct <a>/<span> children) — not the outer
+          wrapper two levels up — so the pair reads as well-formed to
+          both screen readers and automated audits (Lighthouse's
+          aria-required-children check walks the DOM, not the flattened
+          accessibility tree, so a role="listitem" nested a level deeper
+          than a generic wrapper still gets flagged even though it would
+          work fine for a real screen reader). */}
+      <div className="logoloop-track" role="list" aria-label={ariaLabel}>
         {track.map((logo, index) => {
           const hidden = index >= logos.length;
           const content = logo.node ? (
@@ -62,18 +68,25 @@ export default function LogoLoop({
           ) : (
             <span className="logoloop-text">{logo.title}</span>
           );
-          const item = (
-            <span className={`logoloop-item ${scaleOnHover ? "is-scalable" : ""}`} role="listitem" aria-hidden={hidden}>
-              {content}
-            </span>
-          );
           const key = `${logo.title || logo.alt || "logo"}-${index}`;
+          const itemClassName = `logoloop-item ${scaleOnHover ? "is-scalable" : ""}`;
           return logo.href ? (
-            <a key={key} href={logo.href} target="_blank" rel="noreferrer" tabIndex={hidden ? -1 : 0}>
-              {item}
+            <a
+              key={key}
+              href={logo.href}
+              target="_blank"
+              rel="noreferrer"
+              tabIndex={hidden ? -1 : 0}
+              role="listitem"
+              aria-hidden={hidden}
+              className={itemClassName}
+            >
+              {content}
             </a>
           ) : (
-            <span key={key}>{item}</span>
+            <span key={key} role="listitem" aria-hidden={hidden} className={itemClassName}>
+              {content}
+            </span>
           );
         })}
       </div>
