@@ -378,7 +378,13 @@ function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded,
             <button
               type="button"
               className={`public-quick-add ${justAddedThis ? "is-added" : ""}`}
-              aria-label={available(singleChoice) ? `Add ${product.name} to cart` : `Pre-order ${product.name}`}
+              aria-label={
+                available(singleChoice)
+                  ? `Add ${product.name} to cart`
+                  : singleChoice?.inTransit
+                    ? `Reserve ${product.name}`
+                    : `Pre-order ${product.name}`
+              }
               onClick={() => {
                 addToCart(product, singleChoice, 1);
                 onAdded?.(product.id);
@@ -1491,7 +1497,13 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
           >
             {added ? <Check size={18} /> : <ShoppingBag size={18} />}
             {" "}
-            {added ? "Added to cart" : available(choice) ? `Add ${choice?.color || "paddle"} to cart` : `Pre-order ${choice?.color || "this paddle"}`}
+            {added
+              ? "Added to cart"
+              : available(choice)
+                ? `Add ${choice?.color || "paddle"} to cart`
+                : choice?.inTransit
+                  ? `Reserve ${choice?.color || "this paddle"}`
+                  : `Pre-order ${choice?.color || "this paddle"}`}
           </button>
         </div>
         {toggleCompare && (
