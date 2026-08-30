@@ -149,6 +149,67 @@ async function preorderInfoMaps(db) {
   return { byVariant, byProduct };
 }
 
+/**
+ * Distinct from preorderInfoMaps above: this is specifically stock the owner
+ * has already committed real money to and that's physically moving (batch
+ * status "In Transit" — see BATCH_STATUSES in src/lib/calc.js), not a batch
+ * merely "Planned" or "Ordered". A customer reserving this carries less risk
+ * than a from-scratch pre-order, so the storefront offers it at a lower
+ * deposit (see IN_TRANSIT_DEPOSIT_RATIO) with its own messaging and pill.
+ *
+ * "Remaining" is the batch line's quantity minus whatever's already been
+ * claimed by other orders against that exact batch (order_items.batch_id) —
+ * reserving one is buying it, so it comes straight off what's left to offer.
+ * Cancelled orders don't hold a claim. Only batch lines with remaining > 0
+ * are returned; once a line is fully claimed, further demand falls back to
+ * the ordinary pre-order path (preorderInfoMaps), not a phantom 0-in-transit
+ * badge.
+ */
+async function inTransitInfoMaps(db) {
+  // order_items.inventory_id is always the parent product id, even for a
+  // variant line (see buildOrder below) — a plain "oi.inventory_id =
+  // bi.product_id" match would also catch that product's OTHER colours'
+  // order lines against a product-level (no-variant) batch item. The two
+  // branches below are deliberately exclusive: a variant batch line only
+  // ever matches order lines for that exact variant, a product-level batch
+  // line only ever matches order lines with no variant at all.
+  const rows = await db.query(`SELECT bi.id AS batch_item_id, bi.batch_id, bi.product_id, bi.variant_id, bi.quantity,
+      b.expected_arrival, b.preorder_cutoff_date,
+      COALESCE((
+        SELECT SUM(oi.quantity) FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE oi.batch_id = bi.batch_id
+          AND o.status <> 'Cancelled'
+          AND (
+            (bi.variant_id IS NOT NULL AND oi.variant_id = bi.variant_id)
+            OR (bi.variant_id IS NULL AND oi.inventory_id = bi.product_id AND oi.variant_id IS NULL)
+          )
+      ), 0) AS claimed
+    FROM batch_items bi
+    JOIN batches b ON b.id = bi.batch_id
+    WHERE b.status = 'In Transit'`);
+  const byVariant = new Map();
+  const byProduct = new Map();
+  for (const row of rows.rows) {
+    const remaining = Number(row.quantity || 0) - Number(row.claimed || 0);
+    if (remaining <= 0) continue;
+    const info = {
+      remaining,
+      batch_id: row.batch_id,
+      ships_in: row.expected_arrival ? shipsInText(row.expected_arrival) : null,
+      ready_date: row.expected_arrival || null,
+      cutoff_date: row.preorder_cutoff_date || null,
+    };
+    const map = row.variant_id ? byVariant : byProduct;
+    const key = row.variant_id || row.product_id;
+    const existing = map.get(key);
+    if (!existing || (info.ready_date && (!existing.ready_date || info.ready_date < existing.ready_date))) {
+      map.set(key, info);
+    }
+  }
+  return { byVariant, byProduct };
+}
+
 export async function publicCatalog(db) {
   const products = await db.query(`SELECT i.id, i.name, i.sku, i.category, i.sell_price, i.photo_url,
     CASE WHEN COALESCE(i.quantity, 0) > 0 THEN 'available' ELSE 'unavailable' END AS availability
@@ -163,15 +224,18 @@ export async function publicCatalog(db) {
     WHERE active = 1 AND approval_status IN ('approved', 'published')`);
   const photoMap = new Map(photos.rows.map((p) => [`${p.identity_type}:${p.identity_key}`, publicPhoto(p)]));
   const { byVariant, byProduct } = await preorderInfoMaps(db);
+  const inTransit = await inTransitInfoMaps(db);
   const items = products.rows.map((p) => ({
     id: p.id, name: p.name, sku: p.sku || null, category: p.category || null,
     price_php: Number(p.sell_price || 0), availability: p.availability,
     photo_url: photoMap.get(`model:${p.name}`) || photoMap.get(`brand:${String(p.name).split(/\s+/)[0]}`) || publicPhoto(p),
     preorder: p.availability === "unavailable" ? byProduct.get(p.id) || null : null,
+    in_transit: p.availability === "unavailable" ? inTransit.byProduct.get(p.id) || null : null,
     variants: variants.rows.filter((v) => Number(v.inventory_id) === Number(p.id)).map((v) => ({
       id: v.id, color: v.color, sku: v.sku || null, price_php: Number(v.selling_price_php || p.sell_price || 0),
       availability: v.availability, photo_url: photoMap.get(`model:${p.name}::${v.color}`) || publicPhoto(v),
       preorder: v.availability === "unavailable" ? byVariant.get(v.id) || null : null,
+      in_transit: v.availability === "unavailable" ? inTransit.byVariant.get(v.id) || null : null,
     })),
   }));
   return { version: "v1", currency: "PHP", products: items };
@@ -263,6 +327,14 @@ async function buildOrder(db, body) {
     if (row.variant_id != null && variantSet.has(Number(row.variant_id))) byVariantId.set(Number(row.variant_id), row);
     if (row.variant_id == null && productSet.has(Number(row.product_id))) byProductId.set(Number(row.product_id), row);
   }
+  // Re-checked server-side, never trusted from the client: whether any
+  // requested line can actually be claimed against real in-transit stock.
+  // A line only gets the in-transit batch_id (and the order its 25% rate)
+  // when the matched batch line has enough REMAINING quantity to cover the
+  // whole request — a partial match still falls back to the ordinary
+  // pre-order path for that line rather than silently short-claiming it.
+  const { byVariant: inTransitByVariant, byProduct: inTransitByProduct } = await inTransitInfoMaps(db);
+
   const lines = [];
   for (const input of body.items) {
     const row = input.variant_id ? byVariantId.get(Number(input.variant_id)) : byProductId.get(Number(input.product_id));
@@ -275,13 +347,29 @@ async function buildOrder(db, body) {
     // exceed; a pre-order line has no live quantity to check against.
     if (available > 0 && available < input.quantity) return apiError(409, "item_unavailable", "one or more selected items are no longer available");
     const unit = Math.max(0, Number(input.variant_id ? row.selling_price_php || row.sell_price : row.sell_price || 0));
-    lines.push({ product_id: row.product_id, variant_id: row.variant_id || null, name: row.name + (row.color ? ` (${row.color})` : ""), quantity: input.quantity, unit, cost: Math.max(0, Number(row.unit_cost || 0)) });
+    const inTransitInfo = input.variant_id ? inTransitByVariant.get(Number(input.variant_id)) : inTransitByProduct.get(Number(row.product_id));
+    const claimsInTransit = available <= 0 && inTransitInfo && inTransitInfo.remaining >= input.quantity;
+    lines.push({
+      product_id: row.product_id,
+      variant_id: row.variant_id || null,
+      name: row.name + (row.color ? ` (${row.color})` : ""),
+      quantity: input.quantity,
+      unit,
+      cost: Math.max(0, Number(row.unit_cost || 0)),
+      batch_id: claimsInTransit ? inTransitInfo.batch_id : null,
+    });
   }
   const subtotal = lines.reduce((sum, line) => sum + line.unit * line.quantity, 0);
   const shipping = body.fulfillment_method === "shipping" ? Math.max(0, Number(body.shipping_fee_php || 0)) : 0;
   if (!Number.isFinite(shipping) || shipping > 10000) return apiError(422, "validation_error", "shipping_fee_php is invalid");
   const total = Math.round((subtotal + shipping) * 100) / 100;
-  const deposit = Math.round(total * 50) / 100;
+  // Whole order gets the in-transit rate if ANY line claimed real in-transit
+  // stock — same cart-wide-flag pattern the storefront already uses for
+  // "hasPreorder" rather than prorating a mixed cart line by line.
+  const hasInTransit = lines.some((line) => line.batch_id != null);
+  const paymentRequirement = hasInTransit ? "deposit_25" : "deposit";
+  const depositRatio = hasInTransit ? 0.25 : 0.5;
+  const deposit = Math.round(total * depositRatio * 100) / 100;
   const orderNumber = `WEB-${Date.now().toString(36).toUpperCase()}`;
   // payment_proof_url is a real column the admin's order detail view reads
   // directly (per docs/storefront-api-v1.md) — it must not be buried inside
@@ -310,14 +398,14 @@ async function buildOrder(db, body) {
   const [orderResult] = await db.batch([
     {
       sql: `INSERT INTO orders (order_number, order_date, customer_name, customer, customer_email, customer_phone, shipping_address, channel, status, payment_requirement, shipping_income_php, notes, sale_total, product_cost, shipping_cost, profit, order_type, fulfillment_method, payment_proof_url, acknowledgment)
-        VALUES (?, CURRENT_DATE, ?, ?, ?, ?, ?, 'Storefront', 'Pending', 'deposit', ?, ?, ?, ?, ?, ?, 'Batch', ?, ?, ?)`,
-      args: [orderNumber, cleanText(customer.name, 120), cleanText(customer.name, 120), cleanText(customer.email, 200), cleanText(customer.phone, 40), shippingAddress, shipping, note, total, lines.reduce((s, l) => s + l.cost * l.quantity, 0), shipping, 0, body.fulfillment_method, proofUrl, "Customer accepted non-refundable/non-cancellable acknowledgment"],
+        VALUES (?, CURRENT_DATE, ?, ?, ?, ?, ?, 'Storefront', 'Pending', ?, ?, ?, ?, ?, ?, ?, 'Batch', ?, ?, ?)`,
+      args: [orderNumber, cleanText(customer.name, 120), cleanText(customer.name, 120), cleanText(customer.email, 200), cleanText(customer.phone, 40), shippingAddress, paymentRequirement, shipping, note, total, lines.reduce((s, l) => s + l.cost * l.quantity, 0), shipping, 0, body.fulfillment_method, proofUrl, "Customer accepted non-refundable/non-cancellable acknowledgment"],
     },
     ...lines.map((line) => ({
-      sql: `INSERT INTO order_items (order_id, inventory_id, variant_id, product_name, quantity, unit_price, unit_cost) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      args: [FIRST_INSERT_ID, line.product_id, line.variant_id, line.name, line.quantity, line.unit, line.cost],
+      sql: `INSERT INTO order_items (order_id, inventory_id, variant_id, product_name, quantity, unit_price, unit_cost, batch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [FIRST_INSERT_ID, line.product_id, line.variant_id, line.name, line.quantity, line.unit, line.cost, line.batch_id],
     })),
   ]);
   const orderId = orderResult.lastInsertId;
-  return json(201, { version: "v1", order: { id: orderId, order_number: orderNumber, status: "Pending", subtotal_php: subtotal, shipping_php: shipping, total_php: total, deposit_php: deposit, balance_php: Math.round((total - deposit) * 100) / 100, payment_requirement: "deposit" } });
+  return json(201, { version: "v1", order: { id: orderId, order_number: orderNumber, status: "Pending", subtotal_php: subtotal, shipping_php: shipping, total_php: total, deposit_php: deposit, balance_php: Math.round((total - deposit) * 100) / 100, payment_requirement: paymentRequirement } });
 }

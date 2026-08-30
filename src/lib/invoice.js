@@ -110,9 +110,10 @@ export function invoiceModel({ order, math, productsById, variantsById }) {
    * the exact half is the one figure the customer has to act on, so it gets its
    * own highlighted line rather than disappearing into the run of small rows.
    */
+  const depositPercentLabel = math.paymentRequirement === "deposit_25" ? "25%" : "50%";
   const deposit = math.isDeposit
     ? {
-        label: "50% deposit payable now",
+        label: `${depositPercentLabel} deposit payable now`,
         value: math.depositDue,
         note: math.depositMet
           ? "Received in full — your paddles are reserved."
@@ -152,9 +153,10 @@ export function invoiceModel({ order, math, productsById, variantsById }) {
  */
 function termsSentence(math) {
   if (math.isDeposit) {
+    const percentLabel = math.paymentRequirement === "deposit_25" ? "25%" : "50%";
     return math.depositMet
-      ? `The 50% deposit of ${php(math.depositDue, { decimals: 0 })} has been received and your paddles are reserved. ${php(math.balanceDue, { decimals: 0 })} is due before delivery.`
-      : `A 50% deposit of ${php(math.depositDue, { decimals: 0 })} is payable now. ${php(math.dueNowOutstanding, { decimals: 0 })} remains to settle for the deposit, and your paddles are reserved once it is received.`;
+      ? `The ${percentLabel} deposit of ${php(math.depositDue, { decimals: 0 })} has been received and your paddles are reserved. ${php(math.balanceDue, { decimals: 0 })} is due before delivery.`
+      : `A ${percentLabel} deposit of ${php(math.depositDue, { decimals: 0 })} is payable now. ${php(math.dueNowOutstanding, { decimals: 0 })} remains to settle for the deposit, and your paddles are reserved once it is received.`;
   }
   return math.settledUp
     ? "Paid in full. Thank you."

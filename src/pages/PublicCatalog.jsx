@@ -32,6 +32,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { spring } from "../lib/motion";
+import { DEPOSIT_RATIO, IN_TRANSIT_DEPOSIT_RATIO } from "../lib/calc";
 import { brandOf, PUBLIC_CATALOG_PATH, resolvePhotoAssetUrl } from "../lib/storefront";
 import LogoLoop from "../components/LogoLoop";
 
@@ -203,6 +204,7 @@ export async function loadCatalog() {
       price: product.price_php,
       photo: resolvePhotoAssetUrl(product.photo_url),
       preorder: product.preorder || null,
+      inTransit: product.in_transit || null,
     };
     const choices = (product.variants || []).length
       ? product.variants.map((variant) => ({
@@ -213,6 +215,7 @@ export async function loadCatalog() {
           price: variant.price_php,
           photo: resolvePhotoAssetUrl(variant.photo_url),
           preorder: variant.preorder || null,
+          inTransit: variant.in_transit || null,
         }))
       : [baseChoice];
     return {
@@ -331,6 +334,9 @@ function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded,
   // on different incoming batches, so this just shows whichever one actually
   // has a date on file rather than guessing a single figure for the card.
   const shipsIn = !inStock ? product.choices.find((c) => c.preorder?.ships_in)?.preorder?.ships_in : null;
+  // In transit outranks plain pre-order for the card badge — it's real stock
+  // already on the way, not a speculative restock promise.
+  const inTransit = !inStock && product.choices.some((c) => c.inTransit);
   const fromPrice = Math.min(...product.choices.map((choice) => choice.price));
   const singleChoice = product.choices.length === 1 ? product.choices[0] : null;
   const justAddedThis = justAdded === product.id;
@@ -341,7 +347,11 @@ function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded,
       <div className="public-card-media">
         <Link to={`/paddle/${product.id}`} aria-label={`View ${product.name}`}>
           <ProductImage product={product} choice={product.choices[0]} className="public-card-image" />
-          {!inStock && <span className="public-card-badge is-preorder">Pre-order</span>}
+          {!inStock && (
+            <span className={`public-card-badge ${inTransit ? "is-intransit" : "is-preorder"}`}>
+              {inTransit ? "In transit" : "Pre-order"}
+            </span>
+          )}
         </Link>
         {toggleCompare && (
           <button
@@ -507,9 +517,13 @@ export default function PublicCatalog() {
           max,
           quantity: Math.min(max, quantity),
           // Snapshotted at add-to-cart time, same as price/photo above — not
-          // re-checked live while the line sits in the cart.
+          // re-checked live while the line sits in the cart. The server
+          // re-checks in-transit eligibility for real at order creation
+          // (buildOrder in api/v1/_shared.js) rather than trusting this.
           isPreorder: !available(choice),
           preorder: choice.preorder || null,
+          isInTransit: !available(choice) && !!choice.inTransit,
+          inTransit: choice.inTransit || null,
         },
       ];
     });
@@ -1449,7 +1463,7 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
               className={choice?.id === item.id ? "is-active" : ""}
               onClick={() => { setChoice(item); setQuantity(1); }}
             >
-              <span><b>{item.color}</b><small>{available(item) ? "In stock" : "Pre-order"}</small></span>
+              <span><b>{item.color}</b><small>{available(item) ? "In stock" : item.inTransit ? "In transit" : "Pre-order"}</small></span>
               <strong>{money(item.price)}</strong>
             </button>
           ))}
@@ -1491,23 +1505,34 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
         )}
         {!available(choice) && !added && (
           <>
-            {/* Only shows when the batch actually carrying this colour has a
-                real date on file (api/v1/_shared.js's preorder object) —
-                never a guessed range. */}
-            {(choice?.preorder?.ships_in || choice?.preorder?.cutoff_date) && (
+            {/* Only shows when a batch actually carrying this colour has a
+                real date on file (api/v1/_shared.js's preorder/in_transit
+                objects) — never a guessed range. In transit takes the ETA
+                from its own info (real stock, its own batch), not the
+                generic pre-order one. */}
+            {(choice?.inTransit?.ships_in || choice?.inTransit?.cutoff_date || choice?.preorder?.ships_in || choice?.preorder?.cutoff_date) && (
               <p className="public-preorder-eta">
-                {choice.preorder.ships_in && (
-                  <span><strong>Estimated ready:</strong> {choice.preorder.ships_in}</span>
+                {(choice.inTransit?.ships_in || choice.preorder?.ships_in) && (
+                  <span><strong>Estimated ready:</strong> {choice.inTransit?.ships_in || choice.preorder?.ships_in}</span>
                 )}
-                {choice.preorder.cutoff_date && formatEta(choice.preorder.cutoff_date) && (
-                  <span>Order by {formatEta(choice.preorder.cutoff_date)} for this batch</span>
-                )}
+                {(choice.inTransit?.cutoff_date || choice.preorder?.cutoff_date) &&
+                  formatEta(choice.inTransit?.cutoff_date || choice.preorder?.cutoff_date) && (
+                    <span>Order by {formatEta(choice.inTransit?.cutoff_date || choice.preorder?.cutoff_date)} for this batch</span>
+                  )}
               </p>
             )}
-            <p className="public-preorder-note">
-              This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50%
-              deposit and we'll confirm your pickup or shipping date after payment.
-            </p>
+            {choice.inTransit ? (
+              <p className="public-preorder-note is-intransit">
+                {choice.inTransit.remaining} {choice.inTransit.remaining === 1 ? "piece" : "pieces"} in transit —
+                this stock is already on its way, not a from-scratch pre-order. Reserve it now with a 25%
+                deposit; the remaining balance is due once it's on hand. Same refund policy as any order.
+              </p>
+            ) : (
+              <p className="public-preorder-note">
+                This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50%
+                deposit and we'll confirm your pickup or shipping date after payment.
+              </p>
+            )}
           </>
         )}
         {added && (
@@ -1523,7 +1548,10 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
                   <div><dt>Brand</dt><dd>{product.brand}</dd></div>
                   {product.category && <div><dt>Category</dt><dd>{product.category}</dd></div>}
                   {choice?.sku && <div><dt>SKU</dt><dd>{choice.sku}</dd></div>}
-                  <div><dt>Deposit to reserve</dt><dd>{money((choice?.price || 0) / 2)}</dd></div>
+                  <div>
+                    <dt>Deposit to reserve</dt>
+                    <dd>{money((choice?.price || 0) * (choice?.inTransit ? IN_TRANSIT_DEPOSIT_RATIO : DEPOSIT_RATIO))}</dd>
+                  </div>
                 </dl>
               ),
             },
@@ -1677,6 +1705,7 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
           const low = Math.min(...prices);
           const high = Math.max(...prices);
           const inStock = product.choices.some(available);
+          const inTransit = !inStock && product.choices.some((c) => c.inTransit);
           return (
             <article className="public-compare-card" key={product.id}>
               <button
@@ -1691,8 +1720,8 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
               <span className="public-kicker">{product.brand}</span>
               <h2>{product.name}</h2>
               <strong>{low === high ? money(low) : `${money(low)} – ${money(high)}`}</strong>
-              <span className={`public-inline-badge ${inStock ? "" : "is-preorder"}`}>
-                {inStock ? "In stock" : "Pre-order"}
+              <span className={`public-inline-badge ${inStock ? "" : inTransit ? "is-intransit" : "is-preorder"}`}>
+                {inStock ? "In stock" : inTransit ? "In transit" : "Pre-order"}
               </span>
               <Link to={`../paddle/${product.id}`} className="public-secondary-link">
                 View paddle <ArrowRight size={13} />
@@ -1750,7 +1779,7 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
                   {product.choices.map((choice) => (
                     <div key={choice.id || choice.color} className="public-compare-colour-row">
                       <span>{choice.color}</span>
-                      <small>{available(choice) ? "In stock" : "Pre-order"}</small>
+                      <small>{available(choice) ? "In stock" : choice.inTransit ? "In transit" : "Pre-order"}</small>
                     </div>
                   ))}
                 </td>
@@ -1799,6 +1828,11 @@ function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
   }
 
   const hasPreorder = cart.some((line) => line.isPreorder);
+  // Cart-wide, same simplification the order-creation API uses (buildOrder
+  // in api/v1/_shared.js): any in-transit line puts the WHOLE cart at the
+  // 25% rate rather than prorating a mixed cart line by line.
+  const hasInTransit = cart.some((line) => line.isInTransit);
+  const depositRatio = hasInTransit ? IN_TRANSIT_DEPOSIT_RATIO : DEPOSIT_RATIO;
 
   return (
     <main className="public-main">
@@ -1806,12 +1840,17 @@ function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
         <h1>Cart</h1>
       </section>
 
-      {hasPreorder && (
+      {hasInTransit ? (
+        <div className="public-preorder-banner is-intransit">
+          <span className="public-preorder-banner-badge is-intransit">In transit</span>
+          <p>Your cart includes stock already in transit — reserve it now with a 25% deposit, same refund policy as any order.</p>
+        </div>
+      ) : hasPreorder ? (
         <div className="public-preorder-banner">
           <span className="public-preorder-banner-badge">Pre-order</span>
           <p>Your cart includes at least one pre-order item — it ships once restocked, same deposit and refund policy as any order.</p>
         </div>
-      )}
+      ) : null}
 
       <div className="public-cart-layout">
         <motion.ul className="public-cart-lines" layout>
@@ -1850,7 +1889,14 @@ function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
         <aside className="public-order-summary">
           <h2>Order summary</h2>
           <div className="public-total"><span>Order total</span><strong>{money(total)}</strong></div>
-          <div className="public-deposit"><span>Deposit to reserve</span><strong>{money(total / 2)}</strong><p>Exactly 50% is due now. The remaining {money(total / 2)} is due before pickup or shipping.</p></div>
+          <div className="public-deposit">
+            <span>Deposit to reserve</span>
+            <strong>{money(total * depositRatio)}</strong>
+            <p>
+              Exactly {Math.round(depositRatio * 100)}% is due now. The remaining {money(total * (1 - depositRatio))} is due{" "}
+              {hasInTransit ? "once it's on hand" : "before pickup or shipping"}.
+            </p>
+          </div>
           <Link to="../checkout" className="public-primary">Continue to checkout <ArrowRight size={18} /></Link>
           <Link to=".." className="public-secondary-link">Keep shopping</Link>
         </aside>
@@ -2054,8 +2100,15 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
     }
   };
 
-  const preorderLines = cart.filter((line) => line.isPreorder);
+  // In transit is its own tier, not a flavor of plain pre-order — a line is
+  // one or the other, never counted as both below.
+  const inTransitLines = cart.filter((line) => line.isInTransit);
+  const hasInTransit = inTransitLines.length > 0;
+  const preorderLines = cart.filter((line) => line.isPreorder && !line.isInTransit);
   const hasPreorder = preorderLines.length > 0;
+  const lineLabel = (line) => `${line.name}${line.color && line.color !== "Standard" ? ` (${line.color})` : ""}`;
+  // Same cart-wide simplification as CartPage and buildOrder (api/v1/_shared.js).
+  const depositRatio = hasInTransit ? IN_TRANSIT_DEPOSIT_RATIO : DEPOSIT_RATIO;
 
   return (
     <main className="public-main">
@@ -2065,20 +2118,47 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
       </section>
 
       {/*
-        Only when the cart actually has a pre-order line — a mixed cart still
-        gets this, since the pre-order item still needs the same heads-up.
+        Only when the cart actually has that kind of line — a mixed cart
+        still gets both banners, since each kind needs its own heads-up.
         Each line's own real ships-in text (snapshotted at add-to-cart, same
         source as the PDP note), never one guessed figure for the whole cart.
       */}
+      {hasInTransit && (
+        <div className="public-preorder-banner is-intransit">
+          <span className="public-preorder-banner-badge is-intransit">In transit</span>
+          <div>
+            <p>
+              {inTransitLines.length === 1
+                ? `You're reserving ${lineLabel(inTransitLines[0])} — it's already in transit.`
+                : `You're reserving ${inTransitLines.length} items already in transit.`}{" "}
+              {inTransitLines[0]?.inTransit?.ships_in && <>Estimated ready: {inTransitLines[0].inTransit.ships_in}. </>}
+              25% deposit now — same refund policy as a normal order. The remaining balance is due once it's on hand.
+            </p>
+            {inTransitLines.length > 1 && (
+              <ul className="public-preorder-banner-list">
+                {inTransitLines.map((line) => (
+                  <li key={line.key}>
+                    {lineLabel(line)}
+                    {line.inTransit?.ships_in ? ` — ${line.inTransit.ships_in}` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
       {hasPreorder && (
         <div className="public-preorder-banner">
           <span className="public-preorder-banner-badge">Pre-order</span>
           <div>
             <p>
               {preorderLines.length === 1
-                ? `${preorderLines[0].name}${preorderLines[0].color && preorderLines[0].color !== "Standard" ? ` (${preorderLines[0].color})` : ""} is a pre-order.`
-                : `${preorderLines.length} items in your cart are pre-orders.`}{" "}
-              Same 50% deposit and refund policy as any order — Paddle To Go confirms your pickup or
+                ? `You're pre-ordering ${lineLabel(preorderLines[0])}.`
+                : `You're pre-ordering ${preorderLines.length} items.`}{" "}
+              {preorderLines.length === 1 && preorderLines[0].preorder?.ships_in && (
+                <>Estimated ready: {preorderLines[0].preorder.ships_in}. </>
+              )}
+              Same 50% deposit and refund policy as a normal order — Paddle To Go confirms your pickup or
               shipping date after payment.
             </p>
             {preorderLines.some((line) => line.preorder?.ships_in) && (
@@ -2118,7 +2198,14 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
             ))}
           </ul>
           <div className="public-total"><span>Order total</span><strong>{money(total)}</strong></div>
-          <div className="public-deposit is-compact"><span>Pay now</span><strong>{money(total / 2)}</strong><p>The other {money(total / 2)} is due before fulfilment. Shipping is separate and confirmed if selected.</p></div>
+          <div className="public-deposit is-compact">
+            <span>Pay now</span>
+            <strong>{money(total * depositRatio)}</strong>
+            <p>
+              The other {money(total * (1 - depositRatio))} is due {hasInTransit ? "once it's on hand" : "before fulfilment"}.
+              Shipping is separate and confirmed if selected.
+            </p>
+          </div>
         </aside>
 
         <form className="public-checkout-form" onSubmit={submit}>
@@ -2222,9 +2309,9 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
             </ul>
             <div className="public-total"><span>Subtotal</span><strong>{money(total)}</strong></div>
             <div className="public-deposit is-compact">
-              <span>Downpayment due (50%)</span>
-              <strong>{money(total / 2)}</strong>
-              <p>Balance (due later): {money(total / 2)}</p>
+              <span>Downpayment due ({Math.round(depositRatio * 100)}%)</span>
+              <strong>{money(total * depositRatio)}</strong>
+              <p>Balance (due later): {money(total * (1 - depositRatio))}</p>
             </div>
           </Step>
 
@@ -2278,7 +2365,7 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
           <button type="submit" className="public-primary" disabled={busy}>
             {busy
               ? "Placing order…"
-              : `Place ${hasPreorder ? "pre-order" : "order"} · Pay ${money(total / 2)}`}{" "}
+              : `Place ${hasInTransit ? "reservation" : hasPreorder ? "pre-order" : "order"} · Pay ${money(total * depositRatio)}`}{" "}
             <ArrowRight size={18} />
           </button>
         </form>
@@ -2359,7 +2446,9 @@ function FaqPage() {
             body: (
               <p>
                 A 50% deposit is required to secure your pre-order. Once your paddle arrives and is checked by
-                Paddle To Go, you'll settle the remaining 50% before release or delivery.
+                Paddle To Go, you'll settle the remaining 50% before release or delivery. A colour marked
+                "In transit" on its product page is a lower-risk version of the same idea — that stock is
+                already on its way, so the deposit is only 25%, with the balance due once it's on hand.
               </p>
             ),
           },

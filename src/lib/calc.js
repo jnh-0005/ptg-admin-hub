@@ -41,8 +41,25 @@ export const BATCH_ALLOCATION_METHODS = ["equal_per_item", "by_weight", "manual_
 /** Deposit orders reserve stock at half the billed total. */
 export const DEPOSIT_RATIO = 0.5;
 
+/**
+ * The lower deposit for stock already committed to a supplier and physically
+ * in transit (batch status "In Transit" — see BATCH_STATUSES) rather than a
+ * speculative pre-order with nothing yet ordered. Real money is already on
+ * the way for this stock, so the reservation carries less risk than a normal
+ * pre-order — reflected here, not just in copy.
+ */
+export const IN_TRANSIT_DEPOSIT_RATIO = 0.25;
+
+const DEPOSIT_RATIO_BY_REQUIREMENT = {
+  deposit: DEPOSIT_RATIO,
+  deposit_25: IN_TRANSIT_DEPOSIT_RATIO,
+};
+
 export const DEPOSIT_RESERVE_NOTE =
   "Stock is reserved upon receipt of the 50% deposit. Without the deposit, stock may be sold to immediate full-payment buyers.";
+
+export const IN_TRANSIT_DEPOSIT_RESERVE_NOTE =
+  "Stock is reserved upon receipt of the 25% deposit. This batch is already in transit — the balance is due once it's on hand.";
 
 /* ------------------------------------------------------------- primitives */
 
@@ -170,21 +187,27 @@ export const CHANNELS = [
   "Other",
 ];
 
-export const PAYMENT_REQUIREMENTS = ["deposit", "full"];
+export const PAYMENT_REQUIREMENTS = ["deposit", "deposit_25", "full"];
 
 export const REQUIREMENT_LABEL = {
   deposit: "50% deposit to reserve",
+  deposit_25: "25% deposit — in transit",
   full: "Full payment",
 };
 
 export const REQUIREMENT_HELP = {
   deposit:
     "50% of the billed total is due now to reserve the stock. The balance is due before completion.",
+  deposit_25:
+    "25% of the billed total is due now — this stock is already in transit, not a from-scratch pre-order. The balance is due once it's on hand.",
   full: "The full billed total is due now.",
 };
 
-export const requirementOf = (order) =>
-  order?.payment_requirement === "full" ? "full" : "deposit";
+export const requirementOf = (order) => {
+  if (order?.payment_requirement === "full") return "full";
+  if (order?.payment_requirement === "deposit_25") return "deposit_25";
+  return "deposit";
+};
 
 export const requirementLabelOf = (order) => REQUIREMENT_LABEL[requirementOf(order)];
 
@@ -193,6 +216,9 @@ export const requirementLabelOf = (order) => REQUIREMENT_LABEL[requirementOf(ord
  * payment order is never "Reserved". This keeps the two vocabularies honest.
  */
 export function normaliseOrderStatus(status, requirement) {
+  // "full" is the only requirement with a different vocabulary — deposit and
+  // deposit_25 (in-transit) both fold into "deposit" here: reserved-not-
+  // pending applies the same way regardless of which deposit percentage.
   const req = requirement === "full" ? "full" : "deposit";
   if (req === "deposit" && status === "Pending") return "Reserved";
   if (req === "full" && status === "Reserved") return "Pending";
@@ -971,8 +997,8 @@ export function orderMath(order, items, landedMap, paid = 0, freebies = []) {
   const billedTotal = productRevenue + shippingIncome;
 
   const requirement = requirementOf(order);
-  const isDeposit = requirement === "deposit";
-  const depositDue = billedTotal * DEPOSIT_RATIO;
+  const isDeposit = requirement === "deposit" || requirement === "deposit_25";
+  const depositDue = billedTotal * (DEPOSIT_RATIO_BY_REQUIREMENT[requirement] ?? DEPOSIT_RATIO);
   const dueNow = isDeposit ? depositDue : billedTotal;
 
   const amountPaid = Math.max(0, M(paid));
