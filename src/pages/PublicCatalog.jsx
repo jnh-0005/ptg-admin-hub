@@ -1119,7 +1119,7 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
         <div className="public-hero-scrim" />
         <Reveal as="div" className="public-hero-text">
           <h1>Reserve your next paddle.</h1>
-          <p>Pick your model and colour, then hold it with a 50% deposit — no account, no waiting on a reply.</p>
+          <p>From everyday favorites to limited-edition releases, find your next paddle at Paddle To Go.</p>
           <a
             href="#shop"
             className="public-hero-cta"
