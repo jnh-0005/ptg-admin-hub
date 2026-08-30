@@ -1564,7 +1564,12 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
                   {choice.inTransit.remaining} {choice.inTransit.remaining === 1 ? "piece" : "pieces"} in transit —
                   this stock is already on its way, not a from-scratch pre-order. Reserve it now with a 50%
                   deposit; the remaining 50% is due in full once it's on hand, before it ships to you. Same refund
-                  policy as any order.
+                  policy as any order.{" "}
+                  {/* Only the fallback rule of thumb — a real per-batch ships_in
+                      date above already says something more specific, so this
+                      never contradicts it. */}
+                  {!choice.inTransit.ships_in &&
+                    "Estimated arrival is usually within 7 days, barring delays."}
                 </p>
               </>
             ) : (
@@ -1577,7 +1582,9 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
                 <p className="public-preorder-note">
                   {choice?.preorder?.cutoff_date && formatEta(choice.preorder.cutoff_date)
                     ? `Order by ${formatEta(choice.preorder.cutoff_date)} to be included in this pre-order round. Reserve it now with a 50% deposit and we'll confirm your pickup or shipping date after payment.`
-                    : "This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50% deposit and we'll confirm your pickup or shipping date after payment."}
+                    : "This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50% deposit and we'll confirm your pickup or shipping date after payment."}{" "}
+                  Estimated arrival is usually 7–14 days after the pre-order cutoff, but timelines may vary due to
+                  cargo, customs, and logistics.
                 </p>
               </>
             )}
@@ -2186,7 +2193,9 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
               {inTransitLines.length === 1
                 ? `You're reserving ${lineLabel(inTransitLines[0])} — it's already in transit.`
                 : `You're reserving ${inTransitLines.length} items already in transit.`}{" "}
-              {inTransitLines[0]?.inTransit?.ships_in && <>Estimated ready: {inTransitLines[0].inTransit.ships_in}. </>}
+              {inTransitLines[0]?.inTransit?.ships_in
+                ? <>Estimated ready: {inTransitLines[0].inTransit.ships_in}. </>
+                : "Estimated arrival is usually within 7 days, barring delays. "}
               50% deposit now — same refund policy as a normal order. The remaining 50% is due in full once it's on
               hand, before it ships to you.
             </p>
@@ -2215,7 +2224,8 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
                   round (settings.preorder_cutoff_date), not per-item. */}
               {preorderCutoff && formatEta(preorderCutoff) && <>Order by {formatEta(preorderCutoff)} for this round. </>}
               Same 50% deposit and refund policy as a normal order — Paddle To Go confirms your pickup or
-              shipping date after payment.
+              shipping date after payment. Estimated arrival is usually 7–14 days after the pre-order cutoff, but
+              timelines may vary due to cargo, customs, and logistics.
             </p>
           </div>
         </div>
@@ -2500,7 +2510,7 @@ function FaqPage() {
             title: "When will my pre-order arrive?",
             body: (
               <p>
-                Estimated arrival is usually 2–3 weeks after the pre-order cutoff, but timelines may vary due to
+                Estimated arrival is usually 7–14 days after the pre-order cutoff, but timelines may vary due to
                 cargo, customs, and logistics.
               </p>
             ),
@@ -2513,8 +2523,9 @@ function FaqPage() {
             title: "Do you offer shipping?",
             body: (
               <p>
-                Yes. Orders can be shipped nationwide. For local delivery, we use LBC COP. Shipping fees are
-                separate from the paddle price.
+                Yes. Orders can be shipped nationwide via LBC or J&T Express. We don't offer cash-on-delivery
+                or cash-on-pickup at the moment — the remaining balance (or full payment) is settled once your
+                paddle is on hand, before it ships out. Shipping fees are separate from the paddle price.
               </p>
             ),
           },
