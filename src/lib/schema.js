@@ -163,36 +163,48 @@ async function columnsOf(table) {
  *
  * THE `name` IS THE BRANDED CANONICAL SPELLING THE LEDGER ACTUALLY HOLDS, AND
  * EVERY OLDER NO-BRAND SPELLING IS AN `alias`. That distinction is the whole
- * reason the redundant duplicate rows existed at all.
+ * reason the redundant duplicate rows existed at all: the seeder matches a
+ * catalog entry against the ledger by NAME (through `namesOf`, so any alias
+ * counts as a match) and inserts only when nothing matched. `Boomstick
+ * Jacksock` / `Boomstick US` / `J2CR Crystal` below are entries this actually
+ * fixed — the ledger had been re-spelled with the brand name, and recording
+ * the old spelling as an alias (rather than dropping it) is what stops the
+ * seeder re-inserting a second no-brand copy every load, without losing any
+ * historical order/movement/storefront-identity row still written against
+ * the old name.
  *
- * The seeder matches a catalog entry against the ledger by NAME (through
- * `namesOf`, so any alias counts as a match) and inserts only when nothing
- * matched. When these entries were still named `Boomstick Clay` / `J6CR` /
- * `Omni Hydro-Cosmic` and the ledger had been re-spelled to
- * `Selkirk Boomstick Clay` / `Honolulu J6CR` / `Selkirk Omni Hydro-Cosmic`,
- * NOTHING matched — so every page load inserted a second, no-brand copy of a
- * paddle that was already there. That is where the duplicates came from, and
- * deleting them from the database alone does not stop it: the very next load
- * writes them straight back. Recording the branded name as canonical and the
- * old spelling as an alias is what actually ends it, and it does so without a
- * single write to a row that survived the cleanup.
+ * KEEP BOTH SPELLINGS on an entry with real aliases. The alias is not
+ * decoration: `standardFor()` and `isAddon()` resolve through the same list,
+ * so dropping it would strand every one of those old rows. Adding a brand
+ * word to a `name` here means moving the previous spelling into `aliases`,
+ * never replacing it.
  *
- * KEEP BOTH SPELLINGS. The alias is not decoration: `standardFor()` and
- * `isAddon()` resolve through the same list, so dropping it would strand any
- * historical order line, movement or storefront identity still written against
- * the old name. Adding a brand word to a `name` here means moving the previous
- * spelling into `aliases`, never replacing it.
+ * But an alias only helps if it's the name the ledger ACTUALLY holds — see
+ * the six entries removed outright below (Selkirk Omni Clay, Selkirk
+ * Boomstick Clay, Selkirk Omni Hydro-Cosmic, Honolulu J6CR, RPM Q2, RPM V2):
+ * their aliases never matched the real per-colour/full-model names the
+ * catalog actually uses, so they sat dormant — inert until an unrelated
+ * INIT_VERSION bump made seedCatalog() actually run again, at which point
+ * every one of them inserted as a brand-new phantom duplicate in production.
+ * A seed entry with no real match in the ledger and no correct alias to add
+ * gets removed entirely, the same as the Sypik Triton 5 entry below never
+ * existed as a bare (non-per-colour) row in the first place.
  */
 const PADDLES = [
   { name: "Kamito Alpha X", sku: "PTG-KAX", price: 8900 },
-  { name: "Selkirk Omni Clay", sku: "PTG-SOC", price: 18900 },
-  { name: "Selkirk Boomstick Clay", sku: "PTG-BSC", price: 18900, aliases: ["Boomstick Clay"] },
-  {
-    name: "Selkirk Omni Hydro-Cosmic",
-    sku: "PTG-OHC",
-    price: 18500,
-    aliases: ["Omni Hydro-Cosmic"],
-  },
+  // No bare "Selkirk Omni Clay" / "Selkirk Boomstick Clay" / "Selkirk Omni
+  // Hydro-Cosmic" / "Honolulu J6CR" / "RPM Q2" / "RPM V2" entries — same bug
+  // as the Sypik Triton 5 fix below, discovered live the same way: the real
+  // catalog only ever carries these per-colour ("...Canyon Clay", "...J6CR
+  // Crystal Blue") or with the full model name ("RPM Q2 16mm Elongated
+  // Pickleball Paddle"), and even the `aliases` these used to carry (J6CR,
+  // Omni Hydro-Cosmic, Boomstick Clay) never matched those real names
+  // either. Bumping INIT_VERSION for an unrelated change (settings.
+  // preorder_cutoff_date) forced seedCatalog() to actually run again after
+  // however long these had silently never matched, and it inserted all six
+  // as brand-new phantom duplicate products straight into production.
+  // Removed outright, not aliased — there is no real "just Clay" or "just
+  // J6CR" or "just RPM Q2" product left to alias onto.
   { name: "Kamito Dominus", sku: "PTG-KDM", price: 6900 },
   {
     name: "Selkirk Boomstick Jacksock",
@@ -202,9 +214,6 @@ const PADDLES = [
   },
   { name: "Selkirk Boomstick US", sku: "PTG-BSU", price: 15900, aliases: ["Boomstick US"] },
   { name: "Honolulu J2CR Crystal", sku: "PTG-J2CR", price: 13500, aliases: ["J2CR Crystal"] },
-  { name: "Honolulu J6CR", sku: "PTG-J6CR", price: 15000, aliases: ["J6CR"] },
-  { name: "RPM Q2", sku: "PTG-RQ2", price: 11900 },
-  { name: "RPM V2", sku: "PTG-RV2", price: 12900 },
   { name: "Zocker Aspire", sku: "PTG-ZAS", price: 8900 },
   // No bare "Sypik Triton 5" entry — the real catalog only ever carries this
   // paddle per-colour ("Sypik Triton 5 Jade Mist", "...Olive Dust", etc.),
