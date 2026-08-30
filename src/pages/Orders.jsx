@@ -1161,7 +1161,7 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
         open={confirmVerifyPayment}
         onClose={() => setConfirmVerifyPayment(false)}
         title="Approve this payment?"
-        body="Only confirm this after you've actually checked the proof against what came into your account. This marks the order Paid — it does not touch stock; stock still only moves when you complete the order."
+        body="Only confirm this after you've actually checked the proof against what came into your account. A deposit is non-refundable, so this marks the order Paid AND takes its paddles and freebies out of stock right now — not only once you later complete the order."
         confirmLabel="Approve payment"
         tone="primary"
         onConfirm={verifyPayment}

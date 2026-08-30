@@ -103,6 +103,32 @@ describe("saveOrder: stock moves on Paid, not only on Completed", () => {
     expect(result.stockApplied).toBe(true);
   });
 
+  /**
+   * Regression test for a real bug caught live in this session: a pre-order
+   * or in-transit colour normally sits at 0 on hand until its batch is
+   * physically Received. Marking it Paid BEFORE that receipt (the whole
+   * point of paying a deposit ahead of stock arriving) must decrement past
+   * zero, not get floored at it — a floor here silently drops the pre-sale,
+   * so when the batch is later Received and adds its quantity, the total
+   * overcounts by exactly the paddles already sold, and the storefront
+   * would offer them to a second buyer. Verified live: Sypik Triton 5
+   * (Jade Mist) at 0 on hand read 0 (not -1) after Paid, then read 1 (not
+   * 0) after the order was deleted and its stock restored — a unit that
+   * was never physically on the shelf.
+   */
+  it("decrements past zero rather than flooring at it, so a batch Received afterwards nets out correctly", async () => {
+    priorStatus = "Reserved";
+    dbBatchCalls.length = 0;
+    await saveOrder(baseOrder("Paid"));
+
+    const statusBatch = findStatusBatch();
+    const stockUpdate = statusBatch.find(
+      (s) => /UPDATE inventory_variants SET quantity/i.test(s.sql) && s.args.includes(1),
+    );
+    expect(stockUpdate.sql).not.toMatch(/MAX\(0/i);
+    expect(stockUpdate.sql).toMatch(/quantity\s*=\s*quantity\s*\+\s*\?/i);
+  });
+
   it("commits the order's status change and the resulting stock decrement in one transaction (Reserved -> Completed)", async () => {
     priorStatus = "Reserved";
     dbBatchCalls.length = 0;

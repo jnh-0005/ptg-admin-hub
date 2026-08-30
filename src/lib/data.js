@@ -549,18 +549,32 @@ function stockDelta(before, after, sign = 1) {
   return [...delta.values()].filter((d) => d.n !== 0);
 }
 
-// Pure builder, no I/O — lets a caller fold these UPDATEs into a larger
-// dbBatch() call it controls (saveOrder does, below) instead of always
-// running them as their own separate transaction.
+/**
+ * Pure builder, no I/O — lets a caller fold these UPDATEs into a larger
+ * dbBatch() call it controls (saveOrder does, below) instead of always
+ * running them as their own separate transaction.
+ *
+ * NO FLOOR AT ZERO, ON PURPOSE. A paddle marked Paid before its batch is
+ * physically Received is a real, sayable state now (see
+ * STOCK_COMMITTED_STATUSES in calc.js): it's sold, but not yet on the
+ * shelf, and on-hand goes negative to say exactly that — the same way a
+ * negative peso figure gets a true minus sign rather than being clamped to
+ * ₱0. Receiving the batch afterwards ADDS its quantity on top (see the
+ * "first" branch in saveBatch below), which nets out to the correct total
+ * ONLY if this never silently ate the pre-sale as zero. A floor here would
+ * make the batch's eventual on-hand total overcount by however many units
+ * were already Paid for ahead of receipt — stock the storefront would then
+ * offer to a second buyer that's already spoken for.
+ */
 function stockUpdateStatements(deltas) {
   return (deltas || []).map((d) =>
     d.variant_id
       ? {
-          sql: "UPDATE inventory_variants SET quantity = MAX(0, quantity + ?) WHERE id = ?",
+          sql: "UPDATE inventory_variants SET quantity = quantity + ? WHERE id = ?",
           args: [Math.round(d.n), d.variant_id],
         }
       : {
-          sql: "UPDATE inventory SET quantity = MAX(0, quantity + ?) WHERE id = ?",
+          sql: "UPDATE inventory SET quantity = quantity + ? WHERE id = ?",
           args: [Math.round(d.n), d.product_id],
         },
   );
@@ -629,10 +643,13 @@ function freebieDelta(before, after) {
   return [...delta.entries()].filter(([, n]) => n !== 0);
 }
 
-// Pure builder — see stockUpdateStatements above for why this is split out.
+// Pure builder — see stockUpdateStatements above for why this is split out,
+// and for why there's no floor at zero: a freebie given away on a Paid
+// order ahead of its own batch's consumables actually arriving is the same
+// real pre-sold state a paddle can be in.
 function freebieStockUpdateStatements(deltas) {
   return (deltas || []).map(([id, n]) => ({
-    sql: "UPDATE freebies SET quantity = MAX(0, quantity + ?) WHERE id = ?",
+    sql: "UPDATE freebies SET quantity = quantity + ? WHERE id = ?",
     args: [Math.round(n), id],
   }));
 }
