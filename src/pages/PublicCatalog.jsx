@@ -93,91 +93,116 @@ const clean = (value) => String(value || "").trim();
  * see chat history for the full source list). PTG's inventory doesn't record
  * which exact shape (elongated/widebody/hybrid) it stocks per model, so
  * weight is given as the honest range across a model's shape options rather
- * than asserting one. A model with no confidently-matched source — "Joola
- * IV" doesn't match any real JOOLA model (their line is Perseus/Hyperion/
- * Vision) — is simply left out: no spec section shows rather than a guessed
- * one.
+ * than asserting one. A model with no confidently-matched source is simply
+ * left out: no spec section shows rather than a guessed one.
+ *
+ * Matched by BASE MODEL PREFIX, not the full product name — every colourway
+ * PTG stocks is its own separate product ("Sypik Triton 5 Bronze Haze",
+ * "Sypik Triton 5 Jade Mist", ...), not a variant of one shared product, so
+ * matching on the exact name meant a spec written for the bare model name
+ * ("sypik triton 5") never matched any real product and the whole
+ * Technology section silently vanished for it — caught live: every Bread
+ * and Butter, Kamito Dominus, RPM, and Sypik colourway was missing it, while
+ * Kamito Alpha X, Zocker Aspire, and every Selkirk colourway (already
+ * prefix-matched, see below) had it. Order matters here only in that no two
+ * prefixes are a substring of each other, so first-match-wins is safe.
  */
-const PADDLE_SPECS = {
-  "franklin c45 alw": {
-    core: "PowerFlex polymer core",
-    surface: "45° peel-ply T700 carbon fiber face",
-    weight: "Varies by core thickness (12.7mm / 14mm / 16mm)",
+const PADDLE_SPECS = [
+  {
+    prefix: "kamito alpha x",
+    spec: {
+      core: "Triple Foam Core (MPP + EVA foam)",
+      surface: "Toray raw carbon fiber",
+      weight: "≈225g (7.9 oz), 16mm core",
+    },
   },
-  "kamito alpha x": {
-    core: "Triple Foam Core (MPP + EVA foam)",
-    surface: "Toray raw carbon fiber",
-    weight: "≈225g (7.9 oz), 16mm core",
+  {
+    prefix: "kamito dominus",
+    spec: {
+      core: "EPP foam + EVA core",
+      surface: "3-layer Japanese Toray carbon fiber",
+      weight: "≈225g (7.9 oz), 16mm core",
+    },
   },
-  "kamito dominus": {
-    core: "EPP foam + EVA core",
-    surface: "3-layer Japanese Toray carbon fiber",
-    weight: "≈225g (7.9 oz), 16mm core",
+  {
+    prefix: "rpm q2",
+    spec: {
+      core: "Molded EPP foam, 3mm groove channels",
+      surface: "FRICTION CarbonBite carbon fiber",
+      weight: "7.5 – 8.0 oz across 14mm/16mm cores",
+    },
   },
-  "rpm q2": {
-    core: "Molded EPP foam, 3mm groove channels",
-    surface: "FRICTION CarbonBite carbon fiber",
-    weight: "7.5 – 8.0 oz across 14mm/16mm cores",
+  {
+    prefix: "rpm v2",
+    spec: {
+      core: "Tri-density honeycomb + EVA foam",
+      surface: "CarbonBite carbon fiber",
+      weight: "7.6 – 8.1 oz across 14mm/16mm cores",
+    },
   },
-  "rpm v2": {
-    core: "Tri-density honeycomb + EVA foam",
-    surface: "CarbonBite carbon fiber",
-    weight: "7.6 – 8.1 oz across 14mm/16mm cores",
+  {
+    prefix: "zocker aspire",
+    spec: {
+      core: "Hot-pressed honeycomb",
+      surface: "T700 carbon fiber (Japan-sourced)",
+      weight: "≈225 – 235 g, 16mm core",
+    },
   },
-  "zocker aspire": {
-    core: "Hot-pressed honeycomb",
-    surface: "T700 carbon fiber (Japan-sourced)",
-    weight: "≈225 – 235 g, 16mm core",
+  {
+    prefix: "sypik triton 5",
+    spec: {
+      core: "Honeycomb core, 16mm",
+      surface: "Raw T700 carbon fiber",
+      weight: "≈227g (7.85 oz)",
+    },
   },
-  "sypik triton 5": {
-    core: "Honeycomb core, 16mm",
-    surface: "Raw T700 carbon fiber",
-    weight: "≈227g (7.85 oz)",
+  {
+    prefix: "honolulu j6cr",
+    spec: {
+      core: "Core Reactor + Dynamic PowerFlex Technology",
+      surface: "Control Joint Technology carbon face",
+      weight: "8.0 – 8.2 oz, 16mm core",
+    },
   },
-  "joola v persus": {
-    core: "Response polymer core, 16mm",
-    surface: "Textured carbon fiber, SK Film vibration layer",
-    weight: "≈7.8 – 8.0 oz",
+  {
+    prefix: "honolulu j2cr",
+    spec: {
+      core: "Core Reactor technology (hybrid shape)",
+      surface: "Control Joint Technology carbon face",
+      weight: "8.0 – 8.3 oz",
+    },
   },
-  "honolulu j6cr": {
-    core: "Core Reactor + Dynamic PowerFlex Technology",
-    surface: "Control Joint Technology carbon face",
-    weight: "8.0 – 8.2 oz, 16mm core",
+  {
+    prefix: "bread and butter loco",
+    spec: {
+      core: "CFC layup (carbon/fiberglass/carbon) + EPP/EVA foam ring",
+      surface: "T-700 raw carbon fiber",
+      weight: "7.8 – 8.1 oz, depending on shape",
+    },
   },
-  "honolulu j6cr crystal blue": {
-    core: "Core Reactor + Dynamic PowerFlex Technology",
-    surface: "Control Joint Technology carbon face",
-    weight: "8.0 – 8.2 oz, 16mm core",
+  // Every Selkirk OMNI and Boomstik colourway PTG carries shares the same
+  // underlying technology, so it's one entry each rather than one per
+  // colourway.
+  {
+    prefix: "selkirk omni",
+    spec: {
+      core: "ReactCore — PureFoam + EVA Power Ring, 16mm",
+      surface: "Multistrata T700 carbon fiber, InfiniGrit surface",
+      weight: "7.9 – 8.2 oz (Elongated or Widebody)",
+    },
   },
-  "honolulu j2cr crystal": {
-    core: "Core Reactor technology (hybrid shape)",
-    surface: "Control Joint Technology carbon face",
-    weight: "8.0 – 8.3 oz",
+  {
+    prefix: "selkirk boomst",
+    spec: {
+      core: "BoomCore — PureFoam + EVA Power Ring, 16mm",
+      surface: "3-layer T700 carbon fiber, InfiniGrit surface",
+      weight: "≈7.9 oz, Elongated shape",
+    },
   },
-  "bread and butter loco": {
-    core: "CFC layup (carbon/fiberglass/carbon) + EPP/EVA foam ring",
-    surface: "T-700 raw carbon fiber",
-    weight: "7.8 – 8.1 oz, depending on shape",
-  },
-};
-// Every Selkirk OMNI and Boomstik colourway PTG carries shares the same
-// underlying technology, so it's matched by name prefix once rather than
-// repeated for each of the nine colourways.
-const SELKIRK_OMNI_SPEC = {
-  core: "ReactCore — PureFoam + EVA Power Ring, 16mm",
-  surface: "Multistrata T700 carbon fiber, InfiniGrit surface",
-  weight: "7.9 – 8.2 oz (Elongated or Widebody)",
-};
-const SELKIRK_BOOMSTIK_SPEC = {
-  core: "BoomCore — PureFoam + EVA Power Ring, 16mm",
-  surface: "3-layer T700 carbon fiber, InfiniGrit surface",
-  weight: "≈7.9 oz, Elongated shape",
-};
+];
 function specFor(name) {
   const key = String(name || "").trim().toLowerCase();
-  if (key.startsWith("selkirk omni")) return SELKIRK_OMNI_SPEC;
-  if (key.startsWith("selkirk boomst")) return SELKIRK_BOOMSTIK_SPEC;
-  return PADDLE_SPECS[key] || null;
+  return PADDLE_SPECS.find(({ prefix }) => key.startsWith(prefix))?.spec || null;
 }
 
 /**
@@ -1321,11 +1346,10 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
             <img src="/images/ptg-court-banner-v2.webp" alt="" width="2658" height="984" />
           </div>
           <div className="public-editorial-copy">
-            <h2>Sourced direct, held for you.</h2>
+            <h2>Trusted brands, brought closer to you.</h2>
             <p>
-              Paddle To Go imports pickleball paddles and gear into the Philippines in batches, so
-              a colour that's out today is simply reserved for the next shipment — never sold out
-              for good.
+              Paddle To Go sources authentic pickleball paddles and gear from trusted brands,
+              bringing new models, colorways, and limited releases to players in the Philippines.
             </p>
           </div>
         </Reveal>
