@@ -231,15 +231,17 @@ const PADDLES = [
 
 export const ADDON_CATEGORY = "Add-on";
 
-const ADDONS = [
-  {
-    name: "Selkirk Boomstick Jacksock Red Case",
-    sku: "PTG-BSJ-CASE",
-    price: 1100,
-    category: ADDON_CATEGORY,
-    aliases: ["Boomstick Jacksock red case"],
-  },
-];
+// No "Selkirk Boomstick Jacksock Red Case" (PTG-BSJ-CASE) entry — same bug
+// as every other removal above, caught live the same way: the product PTG
+// actually sells is named "Selkirk Red Leather Case" (PTG-BSJ-CASE-2, a
+// genuinely different name, not an alias of this one), so this entry never
+// matched it and kept getting silently recreated as a fresh phantom
+// duplicate on the next INIT_VERSION bump, no matter how many times it was
+// deleted from Inventory — reported live 2026-08-30, the same day it had
+// just reinserted itself (as id 42) during that morning's bump. Removed
+// outright, not aliased — there is no real "Boomstick Jacksock Red Case"
+// product to alias onto.
+const ADDONS = [];
 
 export const CATALOG = [...PADDLES, ...ADDONS];
 
@@ -289,7 +291,7 @@ async function runBatch(statements) {
 // on databases stamped with an older version. Forgetting to bump it means a
 // new column or seed entry silently never reaches an already-initialized
 // database.
-const INIT_VERSION = "2026-08-30.1";
+const INIT_VERSION = "2026-08-30.2";
 
 export function initDb() {
   if (!ready) {
