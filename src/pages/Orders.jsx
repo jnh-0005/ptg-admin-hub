@@ -47,6 +47,7 @@ import {
   CARRIERS,
   CHANNELS,
   DEPOSIT_RESERVE_NOTE,
+  IN_TRANSIT_DEPOSIT_RESERVE_NOTE,
   FULFILLMENT_STATUSES,
   M,
   ORDER_STATUSES,
@@ -761,7 +762,9 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
               <div className="flex justify-between gap-2 xs:gap-3">
                 <dt className="min-w-0 break-words text-ink-3">
                   {math.isDeposit ? "Deposit due" : "Amount due now"}
-                  {math.isDeposit && <span className="text-ink-4"> · 50% of billed</span>}
+                  {math.isDeposit && (
+                    <span className="text-ink-4"> · {math.paymentRequirement === "deposit_25" ? "25" : "50"}% of billed</span>
+                  )}
                 </dt>
                 <dd className="num shrink-0 whitespace-nowrap font-semibold">{php(math.dueNow)}</dd>
               </div>
@@ -784,8 +787,12 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
             {math.isDeposit && (
               <p className="mt-2 break-words border-t border-line-soft pt-2 text-micro leading-relaxed text-ink-3">
                 {math.dueNowOutstanding > 0.005
-                  ? `${php(math.dueNowOutstanding, { decimals: 0 })} of the deposit is still to collect. ${DEPOSIT_RESERVE_NOTE}`
-                  : "Deposit received, so the stock is reserved. The balance is due before completion."}
+                  ? `${php(math.dueNowOutstanding, { decimals: 0 })} of the deposit is still to collect. ${
+                      math.paymentRequirement === "deposit_25" ? IN_TRANSIT_DEPOSIT_RESERVE_NOTE : DEPOSIT_RESERVE_NOTE
+                    }`
+                  : math.paymentRequirement === "deposit_25"
+                    ? "Deposit received, so the stock is reserved. The balance is due once it's on hand."
+                    : "Deposit received, so the stock is reserved. The balance is due before completion."}
               </p>
             )}
           </div>

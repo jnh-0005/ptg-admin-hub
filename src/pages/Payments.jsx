@@ -565,7 +565,8 @@ function PaymentTray({ open, payment, prefill, origin, onClose, onSave, onDelete
                         {M(form.amount_php) + 0.005 >= math.dueNowOutstanding &&
                         M(form.amount_php) > 0 ? (
                           <span className="text-teal">
-                            This meets the 50% deposit, so the stock is reserved.
+                            This meets the {math.paymentRequirement === "deposit_25" ? "25" : "50"}% deposit, so
+                            the stock is reserved.
                           </span>
                         ) : (
                           <span className="text-ink-3">
