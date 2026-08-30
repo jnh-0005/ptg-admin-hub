@@ -553,7 +553,15 @@ a.public-messenger-link:hover{background:var(--forest)}
   .public-nav-mobile-toggle,.public-mobile-drawer,.public-mobile-drawer-overlay{display:none!important}
 
   .public-product-stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start;max-width:1280px;margin:0 auto;padding:36px max(18px,calc((100vw - 1280px)/2)) 64px}
-  .public-product-backdrop{position:sticky;top:96px;min-height:0;aspect-ratio:1;border-radius:var(--r-md)}
+  /* aspect-ratio:4/5, not 1 (square) — every stored photo is standardized to
+     that exact 4:5 portrait frame by compactImageElement (src/pages/
+     StorefrontPhotos.jsx). A square backdrop can't be filled by a 4:5 photo
+     without cropping it, so object-fit:contain (correctly) letterboxes it
+     instead — leaving the dark backdrop visible as bars on both sides of
+     every product photo. Matching the box to the photo's real ratio makes
+     it fill edge-to-edge with no backdrop showing, for any photo saved
+     through the current pipeline. */
+  .public-product-backdrop{position:sticky;top:96px;min-height:0;aspect-ratio:4/5;border-radius:var(--r-md)}
   /* height:100% on .public-product-image doesn't resolve here — a percentage
      height can't resolve against a parent whose height comes only from
      aspect-ratio, not an explicit/definite height. Without this, the image
