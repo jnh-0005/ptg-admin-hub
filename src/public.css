@@ -542,9 +542,10 @@ a.public-messenger-link:hover{background:var(--forest)}
      short relative to the image, so left-anchoring the crop keeps that
      block clear of the live h1 text; at real desktop widths the hero is
      tall enough that left-anchoring pushed the block past the right
-     edge, so shift the anchor over just far enough to keep it on-screen
-     without crowding the edge. */
-  .public-hero-bg{object-position:80% center}
+     edge. Centering the crop keeps it fully on-screen with a clear gap
+     from the h1 on both sides — tuned live against real desktop widths
+     (1000px-1440px), not guessed. */
+  .public-hero-bg{object-position:50% center}
   .public-hero-text{max-width:760px}
   .public-hero-text p{max-width:520px;font-size:16px}
   .public-feature{padding:72px 0}
