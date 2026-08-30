@@ -1521,7 +1521,7 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
                   )}
               </p>
             )}
-            {choice.inTransit ? (
+            {choice?.inTransit ? (
               <p className="public-preorder-note is-intransit">
                 {choice.inTransit.remaining} {choice.inTransit.remaining === 1 ? "piece" : "pieces"} in transit —
                 this stock is already on its way, not a from-scratch pre-order. Reserve it now with a 25%
