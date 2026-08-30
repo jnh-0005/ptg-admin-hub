@@ -341,7 +341,7 @@ function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded,
   return (
     <motion.article className="public-card" {...motionProps}>
       <div className="public-card-media">
-        <Link to={`paddle/${product.id}`} aria-label={`View ${product.name}`}>
+        <Link to={`/paddle/${product.id}`} aria-label={`View ${product.name}`}>
           <ProductImage product={product} choice={product.choices[0]} className="public-card-image" />
           {!inStock && <span className="public-card-badge is-preorder">Pre-order</span>}
         </Link>
@@ -358,7 +358,7 @@ function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded,
         )}
       </div>
       <div className="public-card-body">
-        <Link to={`paddle/${product.id}`}>
+        <Link to={`/paddle/${product.id}`}>
           <div className="public-card-name"><span>{product.brand}</span><h2>{product.name}</h2></div>
         </Link>
         {shipsIn && <p className="public-card-shipsin">{shipsIn}</p>}
@@ -377,7 +377,7 @@ function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded,
               {justAddedThis ? <Check size={15} /> : <Plus size={15} />}
             </button>
           ) : (
-            <Link to={`paddle/${product.id}`} className="public-quick-add" aria-label={`Choose a colour for ${product.name}`}>
+            <Link to={`/paddle/${product.id}`} className="public-quick-add" aria-label={`Choose a colour for ${product.name}`}>
               <Plus size={15} />
             </Link>
           ))}
@@ -1246,7 +1246,7 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
                 <span className="public-featured-brand">{featuredProduct.brand}</span>
                 <h2>{featuredProduct.name}</h2>
                 <strong>{money(Math.min(...featuredProduct.choices.map((c) => c.price)))}</strong>
-                <Link to={`paddle/${featuredProduct.id}`} className="public-featured-cta">
+                <Link to={`/paddle/${featuredProduct.id}`} className="public-featured-cta">
                   Shop this paddle <ArrowRight size={15} />
                 </Link>
               </div>

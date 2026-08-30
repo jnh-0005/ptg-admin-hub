@@ -395,8 +395,8 @@ button.public-accordion-summary{display:flex;width:100%;align-items:center;justi
    .public-product-stage, so it needs its own width/centering — matches
    .public-product-stage's own max-width and side padding so the two line
    up visually despite no longer sharing a grid. */
-.public-related-standalone{max-width:1280px;margin-left:auto;margin-right:auto;padding-left:max(18px,calc((100vw - 1280px)/2));padding-right:max(18px,calc((100vw - 1280px)/2))}
-.public-related{margin-top:64px;padding-top:8px;border-top:1px solid var(--line)}
+.public-related-standalone{max-width:1280px;margin-left:auto;margin-right:auto;margin-bottom:56px;padding-left:max(18px,calc((100vw - 1280px)/2));padding-right:max(18px,calc((100vw - 1280px)/2))}
+.public-related{margin-top:64px;padding-top:32px;border-top:1px solid var(--line)}
 .public-related h2{margin:0 0 20px;font-size:20px;font-weight:700;letter-spacing:-.02em}
 
 /* ── Cart page ──────────────────────────────────────────────────────── */
@@ -554,6 +554,14 @@ a.public-messenger-link:hover{background:var(--forest)}
 
   .public-product-stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:start;max-width:1280px;margin:0 auto;padding:36px max(18px,calc((100vw - 1280px)/2)) 64px}
   .public-product-backdrop{position:sticky;top:96px;min-height:0;aspect-ratio:1;border-radius:var(--r-md)}
+  /* height:100% on .public-product-image doesn't resolve here — a percentage
+     height can't resolve against a parent whose height comes only from
+     aspect-ratio, not an explicit/definite height. Without this, the image
+     box silently falls back to the actual photo's own 4:5 ratio (taller
+     than the square backdrop) and spills past the backdrop's bottom edge,
+     uncropped, into whatever section follows (e.g. "You may also like").
+     inset:0 sizes it against the backdrop's real layout box instead. */
+  .public-product-backdrop .public-product-image{position:absolute;inset:0;width:auto;height:auto}
   .public-product-back{display:none}
   .public-product-sheet{margin-top:0;padding:0;border-radius:0;background:transparent}
   .public-product-thumbs{display:flex;flex-wrap:wrap;gap:9px;position:absolute;left:18px;right:18px;bottom:18px;z-index:2}
