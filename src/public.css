@@ -547,7 +547,7 @@ a.public-messenger-link:hover{background:var(--forest)}
 @media(min-width:960px){
   .public-hero{min-height:88svh}
   /* Desktop only: the banner's own logo/social block sits in its right
-     half (ptg-court-banner-v2.png). At mobile/narrow widths the hero is
+     half (ptg-court-banner-v2.webp). At mobile/narrow widths the hero is
      short relative to the image, so left-anchoring the crop keeps that
      block clear of the live h1 text; at real desktop widths the hero is
      tall enough that left-anchoring pushed the block past the right

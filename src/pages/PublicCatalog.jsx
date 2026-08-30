@@ -285,14 +285,14 @@ function Reveal({ as: Tag = "div", delay = 0, className, children, ...rest }) {
 // A brand with no file here (e.g. one newly added to inventory) falls back
 // to its plain name in the marquee rather than a fabricated or guessed mark.
 const BRAND_LOGOS = {
-  "Bread and Butter": "/images/brands/bread-and-butter.png",
-  Sypik: "/images/brands/sypik.png",
-  RPM: "/images/brands/rpm.png",
-  Selkirk: "/images/brands/selkirk.png",
-  Wika: "/images/brands/wika.png",
-  Kamito: "/images/brands/kamito.png",
-  Honolulu: "/images/brands/honolulu.png",
-  Zocker: "/images/brands/zocker.png",
+  "Bread and Butter": "/images/brands/bread-and-butter.webp",
+  Sypik: "/images/brands/sypik.webp",
+  RPM: "/images/brands/rpm.webp",
+  Selkirk: "/images/brands/selkirk.webp",
+  Wika: "/images/brands/wika.webp",
+  Kamito: "/images/brands/kamito.webp",
+  Honolulu: "/images/brands/honolulu.webp",
+  Zocker: "/images/brands/zocker.webp",
 };
 
 /**
@@ -313,7 +313,7 @@ function ProductImage({ product, choice, className = "" }) {
     <img src={src} alt={`${product.name}${choice?.color && choice.color !== "Standard" ? ` in ${choice.color}` : ""}`} onError={() => setFailed(true)} />
   ) : (
     <div className="public-placeholder" aria-label="Photo coming soon">
-      <img src="/images/ptg-logo-header.png" alt="" />
+      <img src="/images/ptg-logo-header.webp" alt="" width="108" height="150" />
       <span>Photo coming soon</span>
     </div>
   );
@@ -759,7 +759,7 @@ function MobileNav({ open, onClose, brands, cartCount }) {
             transition={spring}
           >
             <div className="public-mobile-drawer-head">
-              <img src="/images/ptg-logo-header.png" alt="Paddle To Go" className="public-logo" />
+              <img src="/images/ptg-logo-header.webp" alt="Paddle To Go" className="public-logo" width="108" height="150" />
               <button type="button" className="public-drawer-close" onClick={onClose} aria-label="Close menu, mobile nav">
                 <X size={18} />
               </button>
@@ -847,7 +847,7 @@ function Layout({
     <>
       <header className={`public-nav ${scrolled ? "is-scrolled" : ""}`}>
         <Link to="" className="public-nav-brand" aria-label="Paddle To Go storefront">
-          <img src="/images/ptg-logo-inverse.png" alt="Paddle To Go" className="public-nav-logo" />
+          <img src="/images/ptg-logo-inverse.webp" alt="Paddle To Go" className="public-nav-logo" width="108" height="150" />
         </Link>
 
         <nav className="public-nav-links" aria-label="Storefront">
@@ -930,7 +930,7 @@ function Layout({
 
       <footer className="public-footer">
         <div className="public-footer-brand">
-          <img src="/images/ptg-logo-header.png" alt="Paddle To Go" />
+          <img src="/images/ptg-logo-header.webp" alt="Paddle To Go" width="108" height="150" />
           <p>Your paddles, reserved direct from the source.</p>
         </div>
         <div className="public-footer-col">
@@ -1121,8 +1121,8 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
             no flash of the wrong image and no extra render logic. 960px
             matches every other desktop-only treatment already in this file. */}
         <picture>
-          <source media="(min-width: 960px)" srcSet="/images/ptg-hero-desktop.png" />
-          <img className="public-hero-bg" src="/images/ptg-court-banner-v2.png" alt="Paddle To Go — Cagayan de Oro, Philippines" />
+          <source media="(min-width: 960px)" srcSet="/images/ptg-hero-desktop.webp" />
+          <img className="public-hero-bg" src="/images/ptg-court-banner-v2.webp" alt="Paddle To Go — Cagayan de Oro, Philippines" width="2658" height="984" />
         </picture>
         <div className="public-hero-scrim" />
         <Reveal as="div" className="public-hero-text">
@@ -1318,7 +1318,7 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
       {status === "ready" && filtered.length > 0 && (
         <Reveal as="section" className="public-editorial-band">
           <div className="public-editorial-media">
-            <img src="/images/ptg-court-banner-v2.png" alt="" />
+            <img src="/images/ptg-court-banner-v2.webp" alt="" width="2658" height="984" />
           </div>
           <div className="public-editorial-copy">
             <h2>Sourced direct, held for you.</h2>

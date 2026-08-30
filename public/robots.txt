@@ -1,0 +1,10 @@
+# This app serves two things from one deployment: the public storefront
+# (/public/paddles-7x4k/...) and the admin console (everything else, gated
+# by sign-in). Only the storefront should ever show up in search results —
+# the admin routes lead nowhere useful for a crawler and shouldn't be
+# indexed. Without this file, /robots.txt itself fell through the SPA's
+# catch-all rewrite and served the admin sign-in page's HTML, which Google
+# then tried (and failed) to parse as robots directives.
+User-agent: *
+Allow: /public/
+Disallow: /
