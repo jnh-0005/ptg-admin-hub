@@ -114,56 +114,38 @@ export function shipsInText(expectedArrival) {
 }
 
 /**
- * For every product/variant currently out of stock, the storefront wants to
- * say WHEN — sourced from whichever open batch (not yet Received or
- * Cancelled) is bringing it in, picking the soonest expected_arrival when
- * more than one batch qualifies. A product/variant with no matching batch,
- * or a batch with neither date set, gets no preorder info at all — never a
- * guessed date. Returns two maps (variant_id -> info, product_id -> info),
- * the product map built only from batch_items with no variant_id (a batch
- * line for a paddle that has no colours).
+ * The ONE global pre-order round date (settings.preorder_cutoff_date — see
+ * schema.js for why this isn't batch-scoped): a plain pre-order exists
+ * before any batch does, so every out-of-stock item not already covered by
+ * an in-transit batch shares this single "order by" date, set from the
+ * Orders page. A date already in the past reads exactly like no date at
+ * all — a forgotten stale cutoff never shows on the storefront as if today
+ * were still the deadline.
  */
-async function preorderInfoMaps(db) {
-  const rows = await db.query(`SELECT bi.product_id, bi.variant_id, b.expected_arrival, b.preorder_cutoff_date
-    FROM batch_items bi
-    JOIN batches b ON b.id = bi.batch_id
-    WHERE b.status NOT IN ('Received', 'Cancelled')`);
-  const byVariant = new Map();
-  const byProduct = new Map();
-  for (const row of rows.rows) {
-    const info = {
-      ships_in: row.expected_arrival ? shipsInText(row.expected_arrival) : null,
-      ready_date: row.expected_arrival || null,
-      cutoff_date: row.preorder_cutoff_date || null,
-    };
-    if (!info.ships_in && !info.cutoff_date) continue; // nothing real to say
-    const map = row.variant_id ? byVariant : byProduct;
-    const key = row.variant_id || row.product_id;
-    const existing = map.get(key);
-    // Prefer the batch arriving soonest; a batch with no date at all only
-    // fills the slot if nothing better has claimed it yet.
-    if (!existing || (info.ready_date && (!existing.ready_date || info.ready_date < existing.ready_date))) {
-      map.set(key, info);
-    }
-  }
-  return { byVariant, byProduct };
+async function activePreorderCutoff(db) {
+  const { rows } = await db.query(`SELECT preorder_cutoff_date FROM settings WHERE id = 1`);
+  const cutoff = rows[0]?.preorder_cutoff_date || null;
+  if (!cutoff) return null;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  return cutoff >= todayStr ? cutoff : null;
 }
 
 /**
- * Distinct from preorderInfoMaps above: this is specifically stock the owner
- * has already committed real money to and that's physically moving (batch
- * status "In Transit" — see BATCH_STATUSES in src/lib/calc.js), not a batch
- * merely "Planned" or "Ordered". A customer reserving this carries less risk
- * than a from-scratch pre-order, so the storefront offers it at a lower
- * deposit (see IN_TRANSIT_DEPOSIT_RATIO) with its own messaging and pill.
+ * Distinct from activePreorderCutoff above: this is specifically stock the
+ * owner has already committed real money to and that's physically moving
+ * (batch status "In Transit" — see BATCH_STATUSES in src/lib/calc.js), not a
+ * batch merely "Planned" or "Ordered", and not the plain pre-order round. A
+ * customer reserving this carries less risk than a from-scratch pre-order,
+ * so the storefront offers it at a lower deposit (see IN_TRANSIT_DEPOSIT_RATIO)
+ * with its own messaging and pill.
  *
  * "Remaining" is the batch line's quantity minus whatever's already been
  * claimed by other orders against that exact batch (order_items.batch_id) —
  * reserving one is buying it, so it comes straight off what's left to offer.
  * Cancelled orders don't hold a claim. Only batch lines with remaining > 0
  * are returned; once a line is fully claimed, further demand falls back to
- * the ordinary pre-order path (preorderInfoMaps), not a phantom 0-in-transit
- * badge.
+ * the ordinary pre-order round (activePreorderCutoff), not a phantom
+ * 0-in-transit badge.
  */
 async function inTransitInfoMaps(db) {
   // order_items.inventory_id is always the parent product id, even for a
@@ -223,21 +205,33 @@ export async function publicCatalog(db) {
   const photos = await db.query(`SELECT identity_type, identity_key, photo_url FROM storefront_photos
     WHERE active = 1 AND approval_status IN ('approved', 'published')`);
   const photoMap = new Map(photos.rows.map((p) => [`${p.identity_type}:${p.identity_key}`, publicPhoto(p)]));
-  const { byVariant, byProduct } = await preorderInfoMaps(db);
+  const cutoff = await activePreorderCutoff(db);
   const inTransit = await inTransitInfoMaps(db);
-  const items = products.rows.map((p) => ({
-    id: p.id, name: p.name, sku: p.sku || null, category: p.category || null,
-    price_php: Number(p.sell_price || 0), availability: p.availability,
-    photo_url: photoMap.get(`model:${p.name}`) || photoMap.get(`brand:${String(p.name).split(/\s+/)[0]}`) || publicPhoto(p),
-    preorder: p.availability === "unavailable" ? byProduct.get(p.id) || null : null,
-    in_transit: p.availability === "unavailable" ? inTransit.byProduct.get(p.id) || null : null,
-    variants: variants.rows.filter((v) => Number(v.inventory_id) === Number(p.id)).map((v) => ({
-      id: v.id, color: v.color, sku: v.sku || null, price_php: Number(v.selling_price_php || p.sell_price || 0),
-      availability: v.availability, photo_url: photoMap.get(`model:${p.name}::${v.color}`) || publicPhoto(v),
-      preorder: v.availability === "unavailable" ? byVariant.get(v.id) || null : null,
-      in_transit: v.availability === "unavailable" ? inTransit.byVariant.get(v.id) || null : null,
-    })),
-  }));
+  // In transit always outranks the plain pre-order round — it's real,
+  // already-paid-for stock, not a promise to open a batch once the cutoff
+  // arrives. An item only gets the generic preorder object when it's
+  // unavailable, NOT covered by an in-transit batch, and a round is
+  // currently open (activePreorderCutoff already folds "no cutoff set" and
+  // "cutoff already passed" into the same null).
+  const items = products.rows.map((p) => {
+    const productInTransit = p.availability === "unavailable" ? inTransit.byProduct.get(p.id) || null : null;
+    return {
+      id: p.id, name: p.name, sku: p.sku || null, category: p.category || null,
+      price_php: Number(p.sell_price || 0), availability: p.availability,
+      photo_url: photoMap.get(`model:${p.name}`) || photoMap.get(`brand:${String(p.name).split(/\s+/)[0]}`) || publicPhoto(p),
+      preorder: p.availability === "unavailable" && !productInTransit && cutoff ? { cutoff_date: cutoff } : null,
+      in_transit: productInTransit,
+      variants: variants.rows.filter((v) => Number(v.inventory_id) === Number(p.id)).map((v) => {
+        const variantInTransit = v.availability === "unavailable" ? inTransit.byVariant.get(v.id) || null : null;
+        return {
+          id: v.id, color: v.color, sku: v.sku || null, price_php: Number(v.selling_price_php || p.sell_price || 0),
+          availability: v.availability, photo_url: photoMap.get(`model:${p.name}::${v.color}`) || publicPhoto(v),
+          preorder: v.availability === "unavailable" && !variantInTransit && cutoff ? { cutoff_date: cutoff } : null,
+          in_transit: variantInTransit,
+        };
+      }),
+    };
+  });
   return { version: "v1", currency: "PHP", products: items };
 }
 

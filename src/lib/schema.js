@@ -61,6 +61,15 @@ const LEGACY_TABLES = [
 /** Columns the console needs that the original five tables did not carry. */
 const ADDED_COLUMNS = [
   ["settings", "desired_profit_margin_percent", "REAL NOT NULL DEFAULT 20"],
+  // The ONE global pre-order cutoff — "pre-orders placed before this date go
+  // into the next supplier batch". Deliberately not batch-scoped: a plain
+  // pre-order (see publicCatalog() in api/v1/_shared.js) exists before any
+  // batch does, so it can't reference one. Set from the Orders page, not
+  // Batches — the batch itself only gets created once this date passes and
+  // the operator places the real supplier order. NULL, or a date already in
+  // the past, both mean "no pre-order round currently open" — the storefront
+  // treats a stale forgotten date exactly like no date at all.
+  ["settings", "preorder_cutoff_date", "TEXT"],
   ["inventory", "category", "TEXT"],
   ["inventory", "variant", "TEXT"],
   ["inventory", "source_cost_vnd", "REAL DEFAULT 0"],
@@ -122,12 +131,13 @@ const ADDED_COLUMNS = [
   ["batches", "intl_discount_value", "REAL DEFAULT 0"],
   ["batches", "intl_actual_paid_php", "REAL"],
   ["batches", "domestic_shipping_php", "REAL DEFAULT 0"],
-  // The pre-order order-cutoff date for this batch — when it varies per
-  // shipment. Purely additive, read by the storefront (publicCatalog) to
-  // show a real "order by" date on any paddle sourced from this batch;
-  // `expected_arrival` (already existed) is what "Ships in ~N weeks" is
-  // computed from. Neither is required — a batch with neither set just
-  // shows the existing generic pre-order note, never a guessed date.
+  // No longer read by the storefront — superseded by the global
+  // settings.preorder_cutoff_date above (a plain pre-order isn't tied to a
+  // batch at all, so a per-batch cutoff never made sense for that case; an
+  // in-transit batch, the other tier, uses expected_arrival for its ETA and
+  // has no "order by" concept of its own once it's already shipped). Column
+  // kept only so any value already saved on an existing batch isn't lost;
+  // the Batch form no longer shows or writes it.
   ["batches", "preorder_cutoff_date", "TEXT"],
   /*
     A NEW PHOTO IS A PROPOSAL UNTIL SOMEBODY APPROVES IT. `pending_photo_url`
@@ -270,7 +280,7 @@ async function runBatch(statements) {
 // on databases stamped with an older version. Forgetting to bump it means a
 // new column or seed entry silently never reaches an already-initialized
 // database.
-const INIT_VERSION = "2026-08-28.1";
+const INIT_VERSION = "2026-08-30.1";
 
 export function initDb() {
   if (!ready) {

@@ -265,65 +265,89 @@ describe("shipsInText", () => {
 });
 
 describe("publicCatalog preorder info", () => {
-  /** Routes each query by table name, like the fakeDb above but for the read side. */
-  function catalogDb({ products, variants, photos = [], batchRows = [] }) {
+  /**
+   * Routes each query by table name, like the fakeDb above but for the read
+   * side. `cutoffDate` seeds settings.preorder_cutoff_date (the one global
+   * pre-order round — see activePreorderCutoff in _shared.js);
+   * `inTransitRows` seeds the in-transit batch_items/batches join (a plain
+   * pre-order no longer reads batch_items at all, only in-transit does).
+   */
+  function catalogDb({ products, variants, photos = [], cutoffDate = null, inTransitRows = [] }) {
     return {
       async query(sql) {
         if (/FROM inventory_variants/i.test(sql)) return { rows: variants };
         if (/FROM inventory i/i.test(sql)) return { rows: products };
         if (/FROM storefront_photos/i.test(sql)) return { rows: photos };
-        if (/FROM batch_items/i.test(sql)) return { rows: batchRows };
+        if (/FROM batch_items/i.test(sql)) return { rows: inTransitRows };
+        if (/FROM settings/i.test(sql)) return { rows: [{ preorder_cutoff_date: cutoffDate }] };
         return { rows: [] };
       },
     };
   }
 
-  it("attaches preorder info only to unavailable products/variants, never in-stock ones", async () => {
+  it("attaches the global cutoff to an unavailable product with no in-transit batch", async () => {
     const catalog = await publicCatalog(
       catalogDb({
-        products: [{ id: 1, name: "Franklin C45 ALW", sku: "PTG-C45", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
+        products: [{ id: 1, name: "Kamito Alpha X", sku: "PTG-KAX", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
         variants: [],
-        batchRows: [{ product_id: 1, variant_id: null, expected_arrival: isoDate(21), preorder_cutoff_date: isoDate(5) }],
+        cutoffDate: isoDate(5),
       }),
     );
     const [product] = catalog.products;
     expect(product.availability).toBe("unavailable");
-    expect(product.preorder).toEqual({ ships_in: "Ships in ~3 weeks", ready_date: isoDate(21), cutoff_date: isoDate(5) });
+    expect(product.preorder).toEqual({ cutoff_date: isoDate(5) });
+    expect(product.in_transit).toBeNull();
   });
 
-  it("picks the soonest-arriving open batch when more than one carries the item", async () => {
+  it("treats a cutoff already in the past exactly like no cutoff set — never a stale deadline", async () => {
     const catalog = await publicCatalog(
       catalogDb({
-        products: [{ id: 1, name: "Franklin C45 ALW", sku: "PTG-C45", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
-        variants: [{ id: 10, inventory_id: 1, color: "Red", sku: null, selling_price_php: 0, photo_url: null, availability: "unavailable" }],
-        batchRows: [
-          { product_id: 1, variant_id: 10, expected_arrival: isoDate(40), preorder_cutoff_date: null },
-          { product_id: 1, variant_id: 10, expected_arrival: isoDate(10), preorder_cutoff_date: null },
+        products: [{ id: 1, name: "Kamito Alpha X", sku: "PTG-KAX", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
+        variants: [],
+        cutoffDate: isoDate(-3),
+      }),
+    );
+    expect(catalog.products[0].preorder).toBeNull();
+  });
+
+  it("gives no preorder info when no cutoff is set at all", async () => {
+    const catalog = await publicCatalog(
+      catalogDb({
+        products: [{ id: 1, name: "Kamito Alpha X", sku: "PTG-KAX", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
+        variants: [],
+        cutoffDate: null,
+      }),
+    );
+    expect(catalog.products[0].preorder).toBeNull();
+  });
+
+  it("never attaches preorder info to an item that's actually in stock, even with a cutoff open", async () => {
+    const catalog = await publicCatalog(
+      catalogDb({
+        products: [{ id: 1, name: "Kamito Alpha X", sku: "PTG-KAX", category: "Paddle", sell_price: 12500, photo_url: null, availability: "available" }],
+        variants: [],
+        cutoffDate: isoDate(5),
+      }),
+    );
+    expect(catalog.products[0].preorder).toBeNull();
+  });
+
+  it("prefers in-transit over the plain pre-order round when both would apply", async () => {
+    const catalog = await publicCatalog(
+      catalogDb({
+        products: [{ id: 1, name: "Kamito Alpha X", sku: "PTG-KAX", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
+        variants: [],
+        cutoffDate: isoDate(5),
+        inTransitRows: [
+          {
+            batch_item_id: 1, batch_id: 1, product_id: 1, variant_id: null, quantity: 2,
+            expected_arrival: isoDate(10), preorder_cutoff_date: null, claimed: 0,
+          },
         ],
       }),
     );
-    expect(catalog.products[0].variants[0].preorder.ready_date).toBe(isoDate(10));
-  });
-
-  it("gives no preorder info when nothing real is on file, never a guess", async () => {
-    const catalog = await publicCatalog(
-      catalogDb({
-        products: [{ id: 1, name: "Franklin C45 ALW", sku: "PTG-C45", category: "Paddle", sell_price: 12500, photo_url: null, availability: "unavailable" }],
-        variants: [],
-        batchRows: [{ product_id: 1, variant_id: null, expected_arrival: null, preorder_cutoff_date: null }],
-      }),
-    );
-    expect(catalog.products[0].preorder).toBeNull();
-  });
-
-  it("never attaches preorder info to an item that's actually in stock", async () => {
-    const catalog = await publicCatalog(
-      catalogDb({
-        products: [{ id: 1, name: "Franklin C45 ALW", sku: "PTG-C45", category: "Paddle", sell_price: 12500, photo_url: null, availability: "available" }],
-        variants: [],
-        batchRows: [{ product_id: 1, variant_id: null, expected_arrival: isoDate(21), preorder_cutoff_date: null }],
-      }),
-    );
-    expect(catalog.products[0].preorder).toBeNull();
+    const [product] = catalog.products;
+    expect(product.preorder).toBeNull();
+    expect(product.in_transit).toEqual({ remaining: 2, batch_id: 1, ships_in: "Ships in ~1 week", ready_date: isoDate(10), cutoff_date: null });
   });
 });

@@ -108,12 +108,42 @@ function orderNeedsRestock(order, items, productsById, variantsById) {
 }
 
 export default function Orders() {
-  const { orders, products, derived, commit, payments, productsById } = useStore();
+  const { orders, products, derived, commit, payments, productsById, settings } = useStore();
   const [filter, setFilter] = useState("All");
   const [editing, setEditing] = useState(null); // "new" | order
   const [detail, setDetail] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [origin, captureOrigin] = useOrigin();
+  const [cutoffOpen, setCutoffOpen] = useState(false);
+  const [cutoffDraft, setCutoffDraft] = useState("");
+  const [cutoffBusy, setCutoffBusy] = useState(false);
+
+  // The ONE global pre-order round date (settings.preorder_cutoff_date — see
+  // schema.js). A plain pre-order isn't tied to a batch, so this lives here,
+  // not on Batches — set it once, every out-of-stock paddle with no
+  // in-transit batch shows it on the storefront until it passes or you clear
+  // it. A stale date reads as "past" here too, exactly like the storefront.
+  const cutoffDate = settings?.preorder_cutoff_date || null;
+  const cutoffIsPast = cutoffDate && cutoffDate < today();
+
+  const openCutoffEditor = () => {
+    setCutoffDraft(cutoffIsPast ? "" : cutoffDate || "");
+    setCutoffOpen(true);
+  };
+
+  const saveCutoff = async (value) => {
+    setCutoffBusy(true);
+    try {
+      await commit((db) => db.setPreorderCutoffDate(value || null));
+      haptic(value ? 10 : 6);
+      toast.success(value ? `Pre-order round open until ${formatDateShort(value)}` : "Pre-order round closed");
+      setCutoffOpen(false);
+    } catch (err) {
+      toast.error(err?.message || "Could not save the cutoff date");
+    } finally {
+      setCutoffBusy(false);
+    }
+  };
 
   const restockNeeded = useMemo(() => {
     const ids = new Set();
@@ -160,19 +190,69 @@ export default function Orders() {
             {derived.openOrders} open · {php(derived.sales, { decimals: 0 })} in sales
           </p>
         </div>
-        <button
-          type="button"
-          className="btn-primary ml-auto"
-          disabled={products.length === 0}
-          onClick={(e) => {
-            captureOrigin(e);
-            setEditing("new");
-          }}
-        >
-          <Plus size={17} weight="bold" />
-          New order
-        </button>
+        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <button type="button" className="btn-quiet" onClick={openCutoffEditor}>
+            <Chip tone={cutoffDate && !cutoffIsPast ? "clay" : "gray"} dot={!!(cutoffDate && !cutoffIsPast)}>
+              {cutoffDate && !cutoffIsPast
+                ? `Pre-order cutoff · ${formatDateShort(cutoffDate)}`
+                : "No pre-order cutoff set"}
+            </Chip>
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={products.length === 0}
+            onClick={(e) => {
+              captureOrigin(e);
+              setEditing("new");
+            }}
+          >
+            <Plus size={17} weight="bold" />
+            New order
+          </button>
+        </div>
       </motion.header>
+
+      {/*
+        The ONE global pre-order round — every out-of-stock paddle with no
+        in-transit batch shows this same date on the storefront (see
+        activePreorderCutoff in api/v1/_shared.js). Not a batch field: a
+        plain pre-order exists before any batch does.
+      */}
+      <Tray open={cutoffOpen} onClose={() => setCutoffOpen(false)} origin={origin} title="Pre-order cutoff">
+        <p className="pb-1 pt-1 text-[15px] leading-relaxed text-ink-2">
+          {cutoffIsPast
+            ? `The last cutoff (${formatDateShort(cutoffDate)}) has passed — the storefront already treats it as closed. Set the next round's date, or leave it closed.`
+            : "Every out-of-stock paddle without an in-transit batch shows this date on the storefront as its pre-order round's deadline. Leave it blank to close the round without opening a new one."}
+        </p>
+        <Field label="Cutoff date">
+          <Input type="date" value={cutoffDraft} onChange={(e) => setCutoffDraft(e.target.value)} />
+        </Field>
+        <div className="mt-4 flex gap-2 pb-1">
+          <button type="button" className="btn-quiet flex-1" onClick={() => setCutoffOpen(false)}>
+            <MorphLabel>Cancel</MorphLabel>
+          </button>
+          <button
+            type="button"
+            className="btn-primary flex-1"
+            disabled={cutoffBusy}
+            data-autofocus
+            onClick={() => saveCutoff(cutoffDraft)}
+          >
+            <MorphLabel>{cutoffBusy ? "Saving…" : "Save"}</MorphLabel>
+          </button>
+        </div>
+        {cutoffDate && !cutoffIsPast && (
+          <button
+            type="button"
+            className="btn-quiet mt-2 w-full text-clay"
+            disabled={cutoffBusy}
+            onClick={() => saveCutoff(null)}
+          >
+            Close the round now
+          </button>
+        )}
+      </Tray>
 
       {orders.length === 0 ? (
         <motion.div variants={listChild}>

@@ -142,6 +142,7 @@ export async function loadAll() {
       default_shipping_php: M(s.default_shipping_php, DEFAULT_SETTINGS.default_shipping_php),
       default_markup_percent: M(s.default_markup_percent, DEFAULT_SETTINGS.default_markup_percent),
       desired_profit_margin_percent: M(s.desired_profit_margin_percent, DEFAULT_SETTINGS.desired_profit_margin_percent),
+      preorder_cutoff_date: s.preorder_cutoff_date || null,
       updated_at: s.updated_at,
     },
     products: res[1].rows.map(toProduct),
@@ -171,6 +172,16 @@ export async function saveSettings(values) {
       WHERE id = 1`,
     [M(values.php_to_vnd_rate), M(values.default_shipping_php), M(values.default_markup_percent), M(values.desired_profit_margin_percent, DEFAULT_SETTINGS.desired_profit_margin_percent)],
   );
+}
+
+/**
+ * The one global pre-order round date, set from the Orders page — see the
+ * comment on settings.preorder_cutoff_date in schema.js for why this is
+ * separate from any batch. `date` is a plain "YYYY-MM-DD" string or null to
+ * close the current round without opening a new one.
+ */
+export async function setPreorderCutoffDate(date) {
+  await db(`UPDATE settings SET preorder_cutoff_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1`, [date || null]);
 }
 
 export async function resetSettings() {

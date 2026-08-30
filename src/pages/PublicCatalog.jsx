@@ -330,13 +330,14 @@ function ProductImage({ product, choice, className = "" }) {
  */
 function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded, onAdded, motionProps }) {
   const inStock = product.choices.some(available);
-  // Any choice's real ships-in estimate — a product can have several colours
-  // on different incoming batches, so this just shows whichever one actually
-  // has a date on file rather than guessing a single figure for the card.
-  const shipsIn = !inStock ? product.choices.find((c) => c.preorder?.ships_in)?.preorder?.ships_in : null;
   // In transit outranks plain pre-order for the card badge — it's real stock
   // already on the way, not a speculative restock promise.
   const inTransit = !inStock && product.choices.some((c) => c.inTransit);
+  // A colour can have several in-transit batches; show whichever real ETA is
+  // on file. Plain pre-order has no ETA of its own (see the PDP note) — the
+  // open-until date is what's worth surfacing there instead.
+  const shipsIn = inTransit ? product.choices.find((c) => c.inTransit?.ships_in)?.inTransit?.ships_in : null;
+  const openUntil = !inStock && !inTransit ? product.choices.find((c) => c.preorder?.cutoff_date)?.preorder?.cutoff_date : null;
   const fromPrice = Math.min(...product.choices.map((choice) => choice.price));
   const singleChoice = product.choices.length === 1 ? product.choices[0] : null;
   const justAddedThis = justAdded === product.id;
@@ -370,6 +371,7 @@ function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded,
           <div className="public-card-name"><span>{product.brand}</span><h2>{product.name}</h2></div>
         </Link>
         {shipsIn && <p className="public-card-shipsin">{shipsIn}</p>}
+        {openUntil && formatEta(openUntil) && <p className="public-card-shipsin">Order by {formatEta(openUntil)}</p>}
         <div className="public-card-meta">
           <strong>{money(fromPrice)}</strong>
           {addToCart && (singleChoice ? (
@@ -1505,33 +1507,41 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
         )}
         {!available(choice) && !added && (
           <>
-            {/* Only shows when a batch actually carrying this colour has a
-                real date on file (api/v1/_shared.js's preorder/in_transit
-                objects) — never a guessed range. In transit takes the ETA
-                from its own info (real stock, its own batch), not the
-                generic pre-order one. */}
-            {(choice?.inTransit?.ships_in || choice?.inTransit?.cutoff_date || choice?.preorder?.ships_in || choice?.preorder?.cutoff_date) && (
-              <p className="public-preorder-eta">
-                {(choice.inTransit?.ships_in || choice.preorder?.ships_in) && (
-                  <span><strong>Estimated ready:</strong> {choice.inTransit?.ships_in || choice.preorder?.ships_in}</span>
-                )}
-                {(choice.inTransit?.cutoff_date || choice.preorder?.cutoff_date) &&
-                  formatEta(choice.inTransit?.cutoff_date || choice.preorder?.cutoff_date) && (
-                    <span>Order by {formatEta(choice.inTransit?.cutoff_date || choice.preorder?.cutoff_date)} for this batch</span>
-                  )}
-              </p>
-            )}
+            {/* Two genuinely different tiers, not two flavors of one note —
+                see api/v1/_shared.js's in_transit vs preorder objects.
+                In transit: real stock already paid for and moving, its own
+                batch's real ETA, no "order by" (it's already shipped).
+                Plain pre-order: nothing sourced yet, the one global cutoff
+                date (settings.preorder_cutoff_date — never a guessed range;
+                absent entirely once that date passes, see
+                activePreorderCutoff), no ETA (unknown until a batch is
+                actually placed after the cutoff). */}
             {choice?.inTransit ? (
-              <p className="public-preorder-note is-intransit">
-                {choice.inTransit.remaining} {choice.inTransit.remaining === 1 ? "piece" : "pieces"} in transit —
-                this stock is already on its way, not a from-scratch pre-order. Reserve it now with a 25%
-                deposit; the remaining balance is due once it's on hand. Same refund policy as any order.
-              </p>
+              <>
+                {choice.inTransit.ships_in && (
+                  <p className="public-preorder-eta">
+                    <span><strong>Estimated ready:</strong> {choice.inTransit.ships_in}</span>
+                  </p>
+                )}
+                <p className="public-preorder-note is-intransit">
+                  {choice.inTransit.remaining} {choice.inTransit.remaining === 1 ? "piece" : "pieces"} in transit —
+                  this stock is already on its way, not a from-scratch pre-order. Reserve it now with a 25%
+                  deposit; the remaining balance is due once it's on hand. Same refund policy as any order.
+                </p>
+              </>
             ) : (
-              <p className="public-preorder-note">
-                This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50%
-                deposit and we'll confirm your pickup or shipping date after payment.
-              </p>
+              <>
+                {choice?.preorder?.cutoff_date && formatEta(choice.preorder.cutoff_date) && (
+                  <p className="public-preorder-eta">
+                    <span>Pre-order open until <strong>{formatEta(choice.preorder.cutoff_date)}</strong></span>
+                  </p>
+                )}
+                <p className="public-preorder-note">
+                  {choice?.preorder?.cutoff_date && formatEta(choice.preorder.cutoff_date)
+                    ? `Order by ${formatEta(choice.preorder.cutoff_date)} to be included in this pre-order round. Reserve it now with a 50% deposit and we'll confirm your pickup or shipping date after payment.`
+                    : "This colour ships once restocked — Paddle To Go imports in batches. Reserve it now with a 50% deposit and we'll confirm your pickup or shipping date after payment."}
+                </p>
+              </>
             )}
           </>
         )}
@@ -1833,6 +1843,8 @@ function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
   // 25% rate rather than prorating a mixed cart line by line.
   const hasInTransit = cart.some((line) => line.isInTransit);
   const depositRatio = hasInTransit ? IN_TRANSIT_DEPOSIT_RATIO : DEPOSIT_RATIO;
+  const preorderCutoff = cart.find((line) => line.isPreorder && !line.isInTransit && line.preorder?.cutoff_date)?.preorder
+    ?.cutoff_date;
 
   return (
     <main className="public-main">
@@ -1848,7 +1860,11 @@ function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
       ) : hasPreorder ? (
         <div className="public-preorder-banner">
           <span className="public-preorder-banner-badge">Pre-order</span>
-          <p>Your cart includes at least one pre-order item — it ships once restocked, same deposit and refund policy as any order.</p>
+          <p>
+            Your cart includes at least one pre-order item
+            {preorderCutoff && formatEta(preorderCutoff) ? <> — order by {formatEta(preorderCutoff)} for this round</> : " — it ships once restocked"},
+            same deposit and refund policy as any order.
+          </p>
         </div>
       ) : null}
 
@@ -2106,6 +2122,7 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
   const hasInTransit = inTransitLines.length > 0;
   const preorderLines = cart.filter((line) => line.isPreorder && !line.isInTransit);
   const hasPreorder = preorderLines.length > 0;
+  const preorderCutoff = preorderLines.find((line) => line.preorder?.cutoff_date)?.preorder?.cutoff_date || null;
   const lineLabel = (line) => `${line.name}${line.color && line.color !== "Standard" ? ` (${line.color})` : ""}`;
   // Same cart-wide simplification as CartPage and buildOrder (api/v1/_shared.js).
   const depositRatio = hasInTransit ? IN_TRANSIT_DEPOSIT_RATIO : DEPOSIT_RATIO;
@@ -2155,24 +2172,12 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
               {preorderLines.length === 1
                 ? `You're pre-ordering ${lineLabel(preorderLines[0])}.`
                 : `You're pre-ordering ${preorderLines.length} items.`}{" "}
-              {preorderLines.length === 1 && preorderLines[0].preorder?.ships_in && (
-                <>Estimated ready: {preorderLines[0].preorder.ships_in}. </>
-              )}
+              {/* Every pre-order line shares the same date — it's one global
+                  round (settings.preorder_cutoff_date), not per-item. */}
+              {preorderCutoff && formatEta(preorderCutoff) && <>Order by {formatEta(preorderCutoff)} for this round. </>}
               Same 50% deposit and refund policy as a normal order — Paddle To Go confirms your pickup or
               shipping date after payment.
             </p>
-            {preorderLines.some((line) => line.preorder?.ships_in) && (
-              <ul className="public-preorder-banner-list">
-                {preorderLines
-                  .filter((line) => line.preorder?.ships_in)
-                  .map((line) => (
-                    <li key={line.key}>
-                      {line.name}
-                      {line.color && line.color !== "Standard" ? ` (${line.color})` : ""} — {line.preorder.ships_in}
-                    </li>
-                  ))}
-              </ul>
-            )}
           </div>
         </div>
       )}
