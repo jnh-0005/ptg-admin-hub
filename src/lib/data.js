@@ -9,6 +9,7 @@ import {
   unitKey,
   consumableLine,
   consumableMeta,
+  isStockCommitted,
 } from "./calc";
 import { db, dbBatch, initDb } from "./schema";
 import { approvalStateOf, safePhotoUrl } from "./storefront";
@@ -913,7 +914,10 @@ export async function nextOrderNumber() {
 
 /**
  * Writes the order, its lines, its freebies, refreshes the legacy money
- * columns, and moves stock exactly once when it becomes Completed.
+ * columns, and moves stock exactly once the order first becomes Paid or
+ * Completed (see STOCK_COMMITTED_STATUSES in calc.js) — a 50% deposit is
+ * non-refundable, so the paddle is sold the moment payment is verified,
+ * not only once it's actually handed over.
  */
 export async function saveOrder({ id, orderRow, items, freebies }) {
   let priorStatus = null;
@@ -1002,22 +1006,26 @@ export async function saveOrder({ id, orderRow, items, freebies }) {
     lines.length > 1 ? "Batch" : "Individual",
   ];
 
-  const wasCompleted = priorStatus === "Completed";
-  const isCompleted = status === "Completed";
+  // "Committed" = Paid or Completed (see STOCK_COMMITTED_STATUSES) — a 50%
+  // deposit is non-refundable, so the stock is sold the instant payment is
+  // verified, whichever of the two committed statuses that happens to be.
+  const wasCommitted = isStockCommitted(priorStatus);
+  const isCommitted = isStockCommitted(status);
   const label = String(orderRow.order_number || "").trim();
-  const first = !wasCompleted && isCompleted;
+  const first = !wasCommitted && isCommitted;
 
   let deltas = [];
   let freebieDeltas = [];
   if (first) {
     deltas = stockDelta([], lines, -1);
     freebieDeltas = freebieDelta([], gifts);
-  } else if (wasCompleted && !isCompleted) {
+  } else if (wasCommitted && !isCommitted) {
     deltas = stockDelta(priorItems, [], -1);
     freebieDeltas = freebieDelta(priorFreebies, []);
-  } else if (wasCompleted && isCompleted) {
-    // Re-saving a completed order only moves the DIFFERENCE, so a paddle is
-    // never deducted twice and the ledger never grows a phantom second sale.
+  } else if (wasCommitted && isCommitted) {
+    // Re-saving an already-committed order (Paid<->Completed, or editing its
+    // lines while either) only moves the DIFFERENCE, so a paddle is never
+    // deducted twice and the ledger never grows a phantom second sale.
     deltas = stockDelta(priorItems, lines, -1);
     freebieDeltas = freebieDelta(priorFreebies, gifts);
   }
@@ -1071,7 +1079,7 @@ export async function saveOrder({ id, orderRow, items, freebies }) {
         quantity: d.n,
         reference_type: "order",
         reference_id: orderId,
-        notes: first ? `Sold on ${label}` : `${label} edited after completion`,
+        notes: first ? `Sold on ${label}` : `${label} edited while paid/completed`,
       })),
     ),
     ...freebieStockUpdateStatements(freebieDeltas),
@@ -1208,7 +1216,7 @@ export async function setOrderStatus(order, status) {
 }
 
 export async function deleteOrder(order) {
-  if (order.status === "Completed") {
+  if (isStockCommitted(order.status)) {
     const [itemsRes, freeRes] = await dbBatch([
       {
         sql: "SELECT inventory_id AS product_id, variant_id, quantity FROM order_items WHERE order_id = ?",

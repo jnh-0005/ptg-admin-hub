@@ -143,6 +143,17 @@ export const BATCH_STATUSES = ["Planned", "Ordered", "In Transit", "Received", "
 export const ORDER_STATUSES = ["Pending", "Reserved", "Paid", "Completed", "Cancelled"];
 
 /**
+ * A 50% deposit is non-refundable, so the moment an order is marked "Paid"
+ * (payment verified — see verifyPayment in Orders.jsx) that stock is sold:
+ * it belongs to the customer, whether or not the paddle has physically left
+ * the shelf yet. Stock moves the instant an order FIRST reaches either of
+ * these statuses, not only on "Completed" (fulfilment) — see saveOrder in
+ * src/lib/data.js, the one place that actually moves quantity_on_hand.
+ */
+export const STOCK_COMMITTED_STATUSES = ["Paid", "Completed"];
+export const isStockCommitted = (status) => STOCK_COMMITTED_STATUSES.includes(status);
+
+/**
  * Stock movement vocabulary. `sign` is the direction the movement pushes stock,
  * so a type never has to be interpreted twice.
  */

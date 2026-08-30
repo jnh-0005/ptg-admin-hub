@@ -59,6 +59,7 @@ import {
   formatDate,
   formatDateShort,
   freebieKit,
+  isStockCommitted,
   normaliseOrderStatus,
   orderMath,
   paidFor,
@@ -98,12 +99,13 @@ function lineOutOfStock(item, productsById, variantsById) {
 /**
  * "Awaiting stock" is a live read, not a snapshot of what was true when the
  * order came in — restocking a paddle clears this on its own, no separate
- * status to flip. Only open orders count: a Completed order already took
- * its units out of stock (possibly down to zero itself), which says nothing
- * about whether it's still waiting on anything.
+ * status to flip. Only open (not-yet-committed) orders count: a Paid or
+ * Completed order already took its units out of stock (possibly down to
+ * zero itself, see STOCK_COMMITTED_STATUSES), which says nothing about
+ * whether it's still waiting on anything.
  */
 function orderNeedsRestock(order, items, productsById, variantsById) {
-  if (order.status === "Completed" || order.status === "Cancelled") return false;
+  if (isStockCommitted(order.status) || order.status === "Cancelled") return false;
   return items.some((item) => lineOutOfStock(item, productsById, variantsById));
 }
 
@@ -369,7 +371,7 @@ export default function Orders() {
         onClose={() => setDeleting(null)}
         title={`Delete ${stickyDeleting?.order_number || ""}?`}
         body={
-          stickyDeleting?.status === "Completed"
+          isStockCommitted(stickyDeleting?.status)
             ? "This order already took its paddles and freebies out of stock. Deleting it puts them back and removes its revenue from your totals. Any payments against it become standalone."
             : "The order, its lines and its freebies go for good. Any payments against it become standalone."
         }
@@ -583,19 +585,19 @@ function OrderDetailTray({ open, order, origin, onClose, onEdit }) {
 
   /**
    * The explicit "I looked at the proof, the money is actually in the
-   * account" step — separate from "Complete order". This only moves status
-   * to Paid; it never touches stock. Stock still only moves when the order
-   * is Completed (fulfilled), same as before — payment being verified and a
-   * paddle actually leaving the shelf are two different real-world events,
-   * and a pre-order can sit Paid for a while before there's anything to
-   * hand over.
+   * account" step — separate from "Complete order". A 50% deposit is
+   * non-refundable, so THIS is the moment the paddle is actually sold: it
+   * moves stock immediately (see STOCK_COMMITTED_STATUSES / saveOrder in
+   * src/lib/data.js), not only once the order is later Completed
+   * (fulfilled) — a pre-order can sit Paid for a while with its stock
+   * already gone before there's anything to physically hand over.
    */
   const verifyPayment = async () => {
     setVerifyingPayment(true);
     try {
       await commit((db) => db.setOrderStatus(order, "Paid"));
       haptic([10, 24]);
-      toast.success(`${order.order_number} marked paid — payment verified`);
+      toast.success(`${order.order_number} marked paid — payment verified, stock updated`);
     } catch {
       toast.error("Could not mark the payment verified. Try again.");
     } finally {
@@ -1331,7 +1333,14 @@ function OrderTray({ open, order, items, freebies, origin, onClose, onSave, onDe
   const [saving, setSaving] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
 
-  const alreadyCompleted = order?.status === "Completed";
+  // Whether the order already sits in a stock-committed status (Paid or
+  // Completed — see STOCK_COMMITTED_STATUSES). Saving again within that
+  // state (Paid<->Completed, or editing lines while either) never re-moves
+  // stock — only crossing INTO it for the first time does, which is what
+  // the confirm gate below is guarding.
+  const alreadyCommitted = isStockCommitted(order?.status);
+  // The form's chosen status is about to move stock for the first time.
+  const movingIntoCommitted = isStockCommitted(form.status) && !alreadyCommitted;
 
   /* A new order gets its number filled in for you, not left blank. */
   useEffect(() => {
@@ -1486,7 +1495,9 @@ function OrderTray({ open, order, items, freebies, origin, onClose, onSave, onDe
           colors: CONFETTI_COLORS,
           disableForReducedMotion: true,
         });
-        toast.success("Order completed, stock updated");
+        toast.success(
+          result.status === "Completed" ? "Order completed, stock updated" : "Order marked paid, stock updated",
+        );
       } else {
         // Saving gets a toast, never confetti.
         toast.success(order ? "Order updated" : "Order created");
@@ -1504,7 +1515,7 @@ function OrderTray({ open, order, items, freebies, origin, onClose, onSave, onDe
   };
 
   const submit = () => {
-    if (form.status === "Completed" && !alreadyCompleted) {
+    if (movingIntoCommitted) {
       const found = validate(RULES, form);
       if (!lines.length) found.lines = "Add at least one paddle";
       if (Object.keys(found).length) {
@@ -1521,8 +1532,10 @@ function OrderTray({ open, order, items, freebies, origin, onClose, onSave, onDe
   /* The primary label keeps its stem and grows a count, never swaps. */
   const primaryLabel = saving
     ? "Saving order…"
-    : form.status === "Completed" && !alreadyCompleted
-      ? "Complete order"
+    : movingIntoCommitted
+      ? form.status === "Paid"
+        ? "Mark paid"
+        : "Complete order"
       : order
         ? `Save changes${lines.length ? ` · ${lines.length} item${lines.length === 1 ? "" : "s"}` : ""}`
         : `Save order${lines.length ? ` · ${lines.length} item${lines.length === 1 ? "" : "s"}` : ""}`;
@@ -2309,11 +2322,15 @@ function OrderTray({ open, order, items, freebies, origin, onClose, onSave, onDe
       <ConfirmTray
         open={confirmComplete}
         onClose={() => setConfirmComplete(false)}
-        title="Complete this order?"
-        body={`This takes ${math.unitCount} unit${math.unitCount === 1 ? "" : "s"}${math.freebieCount > 0 ? ` and ${math.freebieCount} freebie${math.freebieCount === 1 ? "" : "s"}` : ""} out of your stock on hand. Saving it again later will not take them out twice.`}
-        confirmLabel="Complete it"
+        title={form.status === "Paid" ? "Mark this order paid?" : "Complete this order?"}
+        body={`${
+          form.status === "Paid"
+            ? "A deposit is non-refundable, so this "
+            : "This "
+        }takes ${math.unitCount} unit${math.unitCount === 1 ? "" : "s"}${math.freebieCount > 0 ? ` and ${math.freebieCount} freebie${math.freebieCount === 1 ? "" : "s"}` : ""} out of your stock on hand. Saving it again later will not take them out twice.`}
+        confirmLabel={form.status === "Paid" ? "Mark it paid" : "Complete it"}
         tone="primary"
-        onConfirm={() => persist("Completed")}
+        onConfirm={() => persist(form.status)}
       />
     </>
   );
