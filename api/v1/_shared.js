@@ -134,10 +134,12 @@ async function activePreorderCutoff(db) {
  * Distinct from activePreorderCutoff above: this is specifically stock the
  * owner has already committed real money to and that's physically moving
  * (batch status "In Transit" — see BATCH_STATUSES in src/lib/calc.js), not a
- * batch merely "Planned" or "Ordered", and not the plain pre-order round. A
- * customer reserving this carries less risk than a from-scratch pre-order,
- * so the storefront offers it at a lower deposit (see IN_TRANSIT_DEPOSIT_RATIO)
- * with its own messaging and pill.
+ * batch merely "Planned" or "Ordered", and not the plain pre-order round. As
+ * of the 2026-08-30 revision it carries the SAME 50% deposit as a normal
+ * pre-order (the old lower in-transit rate, IN_TRANSIT_DEPOSIT_RATIO, is
+ * legacy-only now) — the storefront still gives it its own messaging and
+ * pill, because the stock itself is a real, ETA'd batch rather than a
+ * from-scratch round, but the money due is identical.
  *
  * "Remaining" is the batch line's quantity minus whatever's already been
  * claimed by other orders against that exact batch (order_items.batch_id) —
@@ -323,10 +325,12 @@ async function buildOrder(db, body) {
   }
   // Re-checked server-side, never trusted from the client: whether any
   // requested line can actually be claimed against real in-transit stock.
-  // A line only gets the in-transit batch_id (and the order its 25% rate)
-  // when the matched batch line has enough REMAINING quantity to cover the
-  // whole request — a partial match still falls back to the ordinary
-  // pre-order path for that line rather than silently short-claiming it.
+  // A line only gets the in-transit batch_id when the matched batch line has
+  // enough REMAINING quantity to cover the whole request — a partial match
+  // still falls back to the ordinary pre-order path for that line rather
+  // than silently short-claiming it. The payment rate no longer depends on
+  // this at all (see paymentRequirement below) — the batch_id is kept purely
+  // to claim the reserved stock against the right batch.
   const { byVariant: inTransitByVariant, byProduct: inTransitByProduct } = await inTransitInfoMaps(db);
 
   const lines = [];
@@ -357,12 +361,15 @@ async function buildOrder(db, body) {
   const shipping = body.fulfillment_method === "shipping" ? Math.max(0, Number(body.shipping_fee_php || 0)) : 0;
   if (!Number.isFinite(shipping) || shipping > 10000) return apiError(422, "validation_error", "shipping_fee_php is invalid");
   const total = Math.round((subtotal + shipping) * 100) / 100;
-  // Whole order gets the in-transit rate if ANY line claimed real in-transit
-  // stock — same cart-wide-flag pattern the storefront already uses for
-  // "hasPreorder" rather than prorating a mixed cart line by line.
-  const hasInTransit = lines.some((line) => line.batch_id != null);
-  const paymentRequirement = hasInTransit ? "deposit_25" : "deposit";
-  const depositRatio = hasInTransit ? 0.25 : 0.5;
+  // As of the 2026-08-30 revision, in-transit and from-scratch pre-order pay
+  // the identical rate: 50% now to reserve, 50% once the paddle is on hand
+  // and in full before it ships. Whether any line claimed real in-transit
+  // stock (batch_id above) only decides which batch the reservation is
+  // claimed against — it never affects the deposit rate any more. Every new
+  // order is "deposit"; "deposit_25" is never assigned again — see
+  // IN_TRANSIT_DEPOSIT_RATIO in src/lib/calc.js.
+  const paymentRequirement = "deposit";
+  const depositRatio = 0.5;
   const deposit = Math.round(total * depositRatio * 100) / 100;
   const orderNumber = `WEB-${Date.now().toString(36).toUpperCase()}`;
   // payment_proof_url is a real column the admin's order detail view reads

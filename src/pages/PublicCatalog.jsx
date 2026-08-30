@@ -32,7 +32,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { spring } from "../lib/motion";
-import { DEPOSIT_RATIO, IN_TRANSIT_DEPOSIT_RATIO } from "../lib/calc";
+import { DEPOSIT_RATIO } from "../lib/calc";
 import { brandOf, PUBLIC_CATALOG_PATH, resolvePhotoAssetUrl } from "../lib/storefront";
 import LogoLoop from "../components/LogoLoop";
 
@@ -1515,7 +1515,8 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
                 date (settings.preorder_cutoff_date — never a guessed range;
                 absent entirely once that date passes, see
                 activePreorderCutoff), no ETA (unknown until a batch is
-                actually placed after the cutoff). */}
+                actually placed after the cutoff). Both now pay the same 50%
+                deposit — see IN_TRANSIT_DEPOSIT_RATIO in src/lib/calc.js. */}
             {choice?.inTransit ? (
               <>
                 {choice.inTransit.ships_in && (
@@ -1525,8 +1526,9 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
                 )}
                 <p className="public-preorder-note is-intransit">
                   {choice.inTransit.remaining} {choice.inTransit.remaining === 1 ? "piece" : "pieces"} in transit —
-                  this stock is already on its way, not a from-scratch pre-order. Reserve it now with a 25%
-                  deposit; the remaining balance is due once it's on hand. Same refund policy as any order.
+                  this stock is already on its way, not a from-scratch pre-order. Reserve it now with a 50%
+                  deposit; the remaining 50% is due in full once it's on hand, before it ships to you. Same refund
+                  policy as any order.
                 </p>
               </>
             ) : (
@@ -1560,7 +1562,7 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
                   {choice?.sku && <div><dt>SKU</dt><dd>{choice.sku}</dd></div>}
                   <div>
                     <dt>Deposit to reserve</dt>
-                    <dd>{money((choice?.price || 0) * (choice?.inTransit ? IN_TRANSIT_DEPOSIT_RATIO : DEPOSIT_RATIO))}</dd>
+                    <dd>{money((choice?.price || 0) * DEPOSIT_RATIO)}</dd>
                   </div>
                 </dl>
               ),
@@ -1838,11 +1840,10 @@ function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
   }
 
   const hasPreorder = cart.some((line) => line.isPreorder);
-  // Cart-wide, same simplification the order-creation API uses (buildOrder
-  // in api/v1/_shared.js): any in-transit line puts the WHOLE cart at the
-  // 25% rate rather than prorating a mixed cart line by line.
+  // In-transit and from-scratch pre-order pay the same 50% deposit now — see
+  // IN_TRANSIT_DEPOSIT_RATIO in src/lib/calc.js.
   const hasInTransit = cart.some((line) => line.isInTransit);
-  const depositRatio = hasInTransit ? IN_TRANSIT_DEPOSIT_RATIO : DEPOSIT_RATIO;
+  const depositRatio = DEPOSIT_RATIO;
   const preorderCutoff = cart.find((line) => line.isPreorder && !line.isInTransit && line.preorder?.cutoff_date)?.preorder
     ?.cutoff_date;
 
@@ -1855,7 +1856,7 @@ function CartPage({ cart, total, onQuantity, onRemove, reduce }) {
       {hasInTransit ? (
         <div className="public-preorder-banner is-intransit">
           <span className="public-preorder-banner-badge is-intransit">In transit</span>
-          <p>Your cart includes stock already in transit — reserve it now with a 25% deposit, same refund policy as any order.</p>
+          <p>Your cart includes stock already in transit — reserve it now with a 50% deposit, same refund policy as any order. The remaining 50% is due in full once it's on hand, before it ships.</p>
         </div>
       ) : hasPreorder ? (
         <div className="public-preorder-banner">
@@ -2124,8 +2125,9 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
   const hasPreorder = preorderLines.length > 0;
   const preorderCutoff = preorderLines.find((line) => line.preorder?.cutoff_date)?.preorder?.cutoff_date || null;
   const lineLabel = (line) => `${line.name}${line.color && line.color !== "Standard" ? ` (${line.color})` : ""}`;
-  // Same cart-wide simplification as CartPage and buildOrder (api/v1/_shared.js).
-  const depositRatio = hasInTransit ? IN_TRANSIT_DEPOSIT_RATIO : DEPOSIT_RATIO;
+  // In-transit and from-scratch pre-order pay the same 50% deposit now — see
+  // IN_TRANSIT_DEPOSIT_RATIO in src/lib/calc.js.
+  const depositRatio = DEPOSIT_RATIO;
 
   return (
     <main className="public-main">
@@ -2149,7 +2151,8 @@ function CheckoutPage({ cart, total, onSent, reduce }) {
                 ? `You're reserving ${lineLabel(inTransitLines[0])} — it's already in transit.`
                 : `You're reserving ${inTransitLines.length} items already in transit.`}{" "}
               {inTransitLines[0]?.inTransit?.ships_in && <>Estimated ready: {inTransitLines[0].inTransit.ships_in}. </>}
-              25% deposit now — same refund policy as a normal order. The remaining balance is due once it's on hand.
+              50% deposit now — same refund policy as a normal order. The remaining 50% is due in full once it's on
+              hand, before it ships to you.
             </p>
             {inTransitLines.length > 1 && (
               <ul className="public-preorder-banner-list">
@@ -2450,10 +2453,10 @@ function FaqPage() {
             title: "How does pre-order work?",
             body: (
               <p>
-                A 50% deposit is required to secure your pre-order. Once your paddle arrives and is checked by
-                Paddle To Go, you'll settle the remaining 50% before release or delivery. A colour marked
-                "In transit" on its product page is a lower-risk version of the same idea — that stock is
-                already on its way, so the deposit is only 25%, with the balance due once it's on hand.
+                A 50% deposit is required to secure your pre-order — whether it's a from-scratch pre-order or
+                stock marked "In transit" on its product page, already on its way to us. Once your paddle
+                arrives and is checked by Paddle To Go, you'll settle the remaining 50% in full before it's
+                released or shipped to you.
               </p>
             ),
           },

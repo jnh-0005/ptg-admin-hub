@@ -42,11 +42,16 @@ export const BATCH_ALLOCATION_METHODS = ["equal_per_item", "by_weight", "manual_
 export const DEPOSIT_RATIO = 0.5;
 
 /**
- * The lower deposit for stock already committed to a supplier and physically
- * in transit (batch status "In Transit" — see BATCH_STATUSES) rather than a
- * speculative pre-order with nothing yet ordered. Real money is already on
- * the way for this stock, so the reservation carries less risk than a normal
- * pre-order — reflected here, not just in copy.
+ * LEGACY ONLY, as of the 2026-08-30 revision. In-transit stock used to carry
+ * a lower deposit than a from-scratch pre-order (real money already on the
+ * way meant less risk). That distinction is retired: reserving in-transit
+ * stock now costs the same 50% as a normal pre-order (DEPOSIT_RATIO), with
+ * the balance due once the paddle is on hand, in full, before it ships.
+ *
+ * This constant and the `deposit_25` requirement stay wired up so any order
+ * already recorded at 25% keeps computing and displaying exactly what it did
+ * when it was placed — nothing rewrites history. No new order is ever
+ * assigned `deposit_25`; see buildOrder in api/v1/_shared.js.
  */
 export const IN_TRANSIT_DEPOSIT_RATIO = 0.25;
 
@@ -58,6 +63,7 @@ const DEPOSIT_RATIO_BY_REQUIREMENT = {
 export const DEPOSIT_RESERVE_NOTE =
   "Stock is reserved upon receipt of the 50% deposit. Without the deposit, stock may be sold to immediate full-payment buyers.";
 
+/** Legacy only — shown in Orders.jsx solely for an order actually placed at the old 25% rate. */
 export const IN_TRANSIT_DEPOSIT_RESERVE_NOTE =
   "Stock is reserved upon receipt of the 25% deposit. This batch is already in transit — the balance is due once it's on hand.";
 
@@ -191,15 +197,19 @@ export const PAYMENT_REQUIREMENTS = ["deposit", "deposit_25", "full"];
 
 export const REQUIREMENT_LABEL = {
   deposit: "50% deposit to reserve",
-  deposit_25: "25% deposit — in transit",
+  // Legacy label — see IN_TRANSIT_DEPOSIT_RATIO. Only ever shown for an order
+  // that was actually placed at the old 25% rate.
+  deposit_25: "25% deposit — in transit (legacy)",
   full: "Full payment",
 };
 
 export const REQUIREMENT_HELP = {
   deposit:
     "50% of the billed total is due now to reserve the stock. The balance is due before completion.",
+  // Legacy help text — see IN_TRANSIT_DEPOSIT_RATIO. Only ever shown for an
+  // order that was actually placed at the old 25% rate.
   deposit_25:
-    "25% of the billed total is due now — this stock is already in transit, not a from-scratch pre-order. The balance is due once it's on hand.",
+    "25% of the billed total is due now — this order was placed under the old in-transit rate. The balance is due once it's on hand.",
   full: "The full billed total is due now.",
 };
 
