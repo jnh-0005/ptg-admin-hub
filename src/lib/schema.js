@@ -205,7 +205,13 @@ const PADDLES = [
   // as brand-new phantom duplicate products straight into production.
   // Removed outright, not aliased — there is no real "just Clay" or "just
   // J6CR" or "just RPM Q2" product left to alias onto.
-  { name: "Kamito Dominus", sku: "PTG-KDM", price: 6900 },
+  // "Kamito Dominus Indigo", not bare "Kamito Dominus" — same rename bug,
+  // caught in the same audit as Zocker Aspire above: the real row (PTG-KDM)
+  // had been renamed to "...Indigo" sometime after this entry was written,
+  // so the very same INIT_VERSION bump (2026-08-30.2) that surfaced the
+  // Zocker Aspire phantom also inserted this one (PTG-KDM-2) in production,
+  // caught before the user ever saw it. Old spelling kept as an alias.
+  { name: "Kamito Dominus Indigo", sku: "PTG-KDM", price: 6900, aliases: ["Kamito Dominus"] },
   {
     name: "Selkirk Boomstick Jacksock",
     sku: "PTG-BSJ",
@@ -214,7 +220,15 @@ const PADDLES = [
   },
   { name: "Selkirk Boomstick US", sku: "PTG-BSU", price: 15900, aliases: ["Boomstick US"] },
   { name: "Honolulu J2CR Crystal", sku: "PTG-J2CR", price: 13500, aliases: ["J2CR Crystal"] },
-  { name: "Zocker Aspire", sku: "PTG-ZAS", price: 8900 },
+  // "Zocker Aspire Neptune", not bare "Zocker Aspire" — same rename bug as
+  // Boomstick Jacksock above, caught the moment it happened: bumping
+  // INIT_VERSION for the unrelated ADDONS fix (2026-08-30.2) made
+  // seedCatalog() run again, found no row named exactly "Zocker Aspire" any
+  // more (it had been renamed to "...Neptune" sometime after this entry was
+  // written), and inserted a brand-new phantom (PTG-ZAS-2) straight into
+  // production within the same session. Old spelling kept as an alias, not
+  // dropped, per this file's own rule above.
+  { name: "Zocker Aspire Neptune", sku: "PTG-ZAS", price: 8900, aliases: ["Zocker Aspire"] },
   // No bare "Sypik Triton 5" entry — the real catalog only ever carries this
   // paddle per-colour ("Sypik Triton 5 Jade Mist", "...Olive Dust", etc.),
   // so a standalone "Sypik Triton 5" seed row never matched any of those
@@ -291,7 +305,7 @@ async function runBatch(statements) {
 // on databases stamped with an older version. Forgetting to bump it means a
 // new column or seed entry silently never reaches an already-initialized
 // database.
-const INIT_VERSION = "2026-08-30.2";
+const INIT_VERSION = "2026-08-30.3";
 
 export function initDb() {
   if (!ready) {
