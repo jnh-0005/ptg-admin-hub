@@ -32,7 +32,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { spring } from "../lib/motion";
-import { DEPOSIT_RATIO } from "../lib/calc";
+import { DEPOSIT_RATIO } from "../lib/depositRatio";
 import { brandOf, PUBLIC_CATALOG_PATH, resolvePhotoAssetUrl } from "../lib/storefront";
 import LogoLoop from "../components/LogoLoop";
 
