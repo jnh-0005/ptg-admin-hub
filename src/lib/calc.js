@@ -10,6 +10,8 @@
  * subtracted from profit exactly like landed cost is.
  */
 
+import { DEPOSIT_RATIO } from "./depositRatio";
+
 export const DEFAULT_SETTINGS = {
   php_to_vnd_rate: 416,
   default_shipping_php: 200,
@@ -38,8 +40,14 @@ export const INTL_QUOTE_BASIS = {
 export const INTL_SHIPPING_METHODS = ["per_kg", "total_batch", "per_item", "manual"];
 export const BATCH_ALLOCATION_METHODS = ["equal_per_item", "by_weight", "manual_per_product"];
 
-/** Deposit orders reserve stock at half the billed total. */
-export const DEPOSIT_RATIO = 0.5;
+/**
+ * Deposit orders reserve stock at half the billed total. Lives in its own
+ * leaf module (see depositRatio.js, imported above) so the storefront can
+ * import just this constant without pulling in the rest of this file's
+ * admin pricing logic — re-exported here so every existing admin import of
+ * it from calc.js still works unchanged.
+ */
+export { DEPOSIT_RATIO };
 
 /**
  * LEGACY ONLY, as of the 2026-08-30 revision. In-transit stock used to carry

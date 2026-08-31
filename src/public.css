@@ -187,10 +187,21 @@ a.public-back-link{display:flex;width:fit-content;align-items:center;gap:6px;mar
    card usually treats a narrow product like a paddle. */
 .public-card-image{position:relative;aspect-ratio:3/4;overflow:hidden;border-radius:var(--r-md);background:#eeece5;padding:8px}
 .public-card-image>img,.public-cart-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .5s cubic-bezier(.25,1,.5,1)}
+/* Lighthouse's unsized-images audit checks the <img> element itself, not
+   an ancestor — the parent's aspect-ratio (above) doesn't satisfy it since
+   ProductImage renders a bare <img> with no width/height. Restating the
+   same ratio directly on the img (it's already the effective rendered
+   ratio via width/height:100%) fixes the audit with no visual change. */
+.public-card-image>img{aspect-ratio:3/4}
 /* Product detail hero: the real supplier photo, not a uniform grid tile —
    contain so the whole paddle always shows, never cropped to fill the
    square backdrop (mobile and desktop both use this same rule). */
-.public-product-image>img{width:100%;height:100%;object-fit:contain;transition:transform .5s cubic-bezier(.25,1,.5,1)}
+/* aspect-ratio:4/5 matches every stored photo's real ratio (see
+   compactImageElement in StorefrontPhotos.jsx) — width/height:100% above
+   already sizes it correctly in every layout context here, this just
+   gives the <img> its own intrinsic-size hint for Lighthouse's
+   unsized-images audit, which checks the element itself. */
+.public-product-image>img{width:100%;height:100%;object-fit:contain;transition:transform .5s cubic-bezier(.25,1,.5,1);aspect-ratio:4/5}
 .public-card-image>img{border-radius:calc(var(--r-md) - 6px)}
 .public-card:hover .public-card-image>img{transform:scale(1.045)}
 .public-card-badge{position:absolute;top:10px;left:10px;padding:4px 9px;border-radius:999px;background:#fffffff2;color:var(--teal);font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
@@ -239,7 +250,7 @@ button.public-card-compare:disabled{opacity:.5}
 .public-featured-band{display:grid;gap:28px;margin:56px 0;padding:36px 22px;border-radius:var(--r-md);background:var(--forest);color:#fff}
 .public-featured-media{position:relative;aspect-ratio:1;overflow:hidden;border-radius:var(--r-sm);background:#ffffff12}
 .public-featured-media>div{width:100%;height:100%}
-.public-featured-media img{width:100%;height:100%;object-fit:cover}
+.public-featured-media img{width:100%;height:100%;object-fit:cover;aspect-ratio:1}
 .public-featured-media .public-placeholder img{width:40%;height:auto;opacity:.5;filter:brightness(0) invert(1)}
 .public-featured-copy{display:flex;flex-direction:column;justify-content:center;gap:4px}
 .public-featured-copy .public-kicker{color:#8fa3d6}
@@ -260,7 +271,7 @@ a.public-featured-cta:hover{background:#e9e8e3}
    off entirely (the actual bug this fixes) — object-position:right keeps
    the crop window anchored to the right edge instead, which comfortably
    covers the whole lockup with room to spare. */
-.public-editorial-media img{width:100%;height:100%;object-fit:cover;object-position:right center}
+.public-editorial-media img{width:100%;height:100%;object-fit:cover;object-position:right center;aspect-ratio:16/10}
 .public-editorial-copy{display:flex;flex-direction:column;justify-content:center;gap:12px;padding:32px 6px}
 .public-editorial-copy h2{margin:0;font-size:clamp(22px,4vw,30px);font-weight:700;letter-spacing:-.025em;line-height:1.15}
 .public-editorial-copy p{margin:0;max-width:440px;color:var(--muted);font-size:14px;line-height:1.65}
@@ -294,6 +305,7 @@ button.public-compare-clear:hover{color:#b23}
 .public-compare-remove{position:absolute;top:10px;right:10px;z-index:1;display:grid;width:28px;height:28px;place-items:center;border:0;border-radius:50%;background:#fffffff2;color:var(--muted)}
 .public-compare-remove:hover{color:var(--ink)}
 .public-compare-image{aspect-ratio:3/4;overflow:hidden;border-radius:var(--r-md);background:#eeece5}
+.public-compare-image img{width:100%;height:100%;object-fit:cover;aspect-ratio:3/4}
 .public-compare-card h2{margin:2px 0 0;font-size:15px;font-weight:600;letter-spacing:-.01em}
 .public-compare-card strong{font:700 14px "Poppins",sans-serif}
 .public-inline-badge{justify-self:start;padding:3px 8px;border-radius:999px;background:#eef1f8;color:var(--teal);font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
