@@ -309,16 +309,23 @@ function Reveal({ as: Tag = "div", delay = 0, className, children, ...rest }) {
 // Real logo marks, background-removed from the brand's own supplied artwork.
 // A brand with no file here (e.g. one newly added to inventory) falls back
 // to its plain name in the marquee rather than a fabricated or guessed mark.
+//
+// Every file here is a fixed 120px tall (its own natural export height) with
+// a brand-specific width — `width` below is each file's real pixel width,
+// paired with that shared 120 as an intrinsic-size hint for LogoLoop's
+// <img> (CSS still governs the actual displayed size; this doesn't change
+// anything visual, it just satisfies Lighthouse's unsized-images audit).
 const BRAND_LOGOS = {
-  "Bread and Butter": "/images/brands/bread-and-butter.webp",
-  Sypik: "/images/brands/sypik.webp",
-  RPM: "/images/brands/rpm.webp",
-  Selkirk: "/images/brands/selkirk.webp",
-  Wika: "/images/brands/wika.webp",
-  Kamito: "/images/brands/kamito.webp",
-  Honolulu: "/images/brands/honolulu.webp",
-  Zocker: "/images/brands/zocker.webp",
+  "Bread and Butter": { src: "/images/brands/bread-and-butter.webp", width: 384 },
+  Sypik: { src: "/images/brands/sypik.webp", width: 419 },
+  RPM: { src: "/images/brands/rpm.webp", width: 582 },
+  Selkirk: { src: "/images/brands/selkirk.webp", width: 265 },
+  Wika: { src: "/images/brands/wika.webp", width: 103 },
+  Kamito: { src: "/images/brands/kamito.webp", width: 128 },
+  Honolulu: { src: "/images/brands/honolulu.webp", width: 120 },
+  Zocker: { src: "/images/brands/zocker.webp", width: 346 },
 };
+const BRAND_LOGO_HEIGHT = 120;
 
 /**
  * Brand row shown via the reusable LogoLoop component (src/components/LogoLoop.jsx).
@@ -327,7 +334,16 @@ const BRAND_LOGOS = {
  * falls back to its plain name rather than a fabricated or guessed mark.
  */
 function brandLogos(names) {
-  return names.map((name) => ({ src: BRAND_LOGOS[name], title: name, alt: name }));
+  return names.map((name) => {
+    const logo = BRAND_LOGOS[name];
+    return {
+      src: logo?.src,
+      width: logo?.width,
+      height: logo ? BRAND_LOGO_HEIGHT : undefined,
+      title: name,
+      alt: name,
+    };
+  });
 }
 
 function ProductImage({ product, choice, className = "" }) {
