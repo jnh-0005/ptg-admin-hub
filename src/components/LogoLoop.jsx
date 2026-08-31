@@ -64,7 +64,16 @@ export default function LogoLoop({
           const content = logo.node ? (
             <span className="logoloop-node">{logo.node}</span>
           ) : logo.src ? (
-            <img src={logo.src} alt={logo.alt || logo.title || ""} />
+            // width/height are pure intrinsic-size hints for Lighthouse's
+            // unsized-images audit — CSS (.logoloop-item img) still governs
+            // the actual displayed size via height:100%/width:auto, so
+            // passing the real file dimensions here changes nothing visual.
+            <img
+              src={logo.src}
+              alt={logo.alt || logo.title || ""}
+              width={logo.width}
+              height={logo.height}
+            />
           ) : (
             <span className="logoloop-text">{logo.title}</span>
           );
