@@ -230,6 +230,7 @@ export async function loadCatalog() {
       photo: resolvePhotoAssetUrl(product.photo_url),
       preorder: product.preorder || null,
       inTransit: product.in_transit || null,
+      lowStock: !!product.low_stock,
     };
     const choices = (product.variants || []).length
       ? product.variants.map((variant) => ({
@@ -241,6 +242,7 @@ export async function loadCatalog() {
           photo: resolvePhotoAssetUrl(variant.photo_url),
           preorder: variant.preorder || null,
           inTransit: variant.in_transit || null,
+          lowStock: !!variant.low_stock,
         }))
       : [baseChoice];
     return {
@@ -371,6 +373,12 @@ function ProductImage({ product, choice, className = "" }) {
  */
 function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded, onAdded, motionProps }) {
   const inStock = product.choices.some(available);
+  // "Only a few left" only when EVERY purchasable colour is low — a card
+  // with one low colour and one well-stocked colour shouldn't read as
+  // urgent for the product as a whole; that's what the colour-level
+  // "In stock"/"Only a few left" label in the variant picker is for.
+  const availableChoices = product.choices.filter(available);
+  const lowStock = inStock && availableChoices.length > 0 && availableChoices.every((c) => c.lowStock);
   // In transit outranks plain pre-order for the card badge — it's real stock
   // already on the way, not a speculative restock promise.
   const inTransit = !inStock && product.choices.some((c) => c.inTransit);
@@ -395,7 +403,7 @@ function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded,
           <span
             className={`public-card-badge ${inStock ? "is-instock" : inTransit ? "is-intransit" : "is-preorder"}`}
           >
-            {inStock ? "In stock" : inTransit ? "In transit" : "Pre-order"}
+            {inStock ? (lowStock ? "Only a few left" : "In stock") : inTransit ? "In transit" : "Pre-order"}
           </span>
         </Link>
         {toggleCompare && (
@@ -1141,6 +1149,9 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
   // component, not a grid card rendered through ProductCard, so it needs
   // its own copy rather than silently inheriting a fix made there.
   const featuredInStock = featuredProduct ? featuredProduct.choices.some(available) : false;
+  const featuredAvailableChoices = featuredProduct ? featuredProduct.choices.filter(available) : [];
+  const featuredLowStock =
+    featuredInStock && featuredAvailableChoices.length > 0 && featuredAvailableChoices.every((c) => c.lowStock);
   const featuredInTransit =
     featuredProduct && !featuredInStock ? featuredProduct.choices.some((c) => c.inTransit) : false;
   const gridProducts = showFeatured ? filtered.slice(1) : filtered;
@@ -1314,7 +1325,13 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
                 <span
                   className={`public-card-badge ${featuredInStock ? "is-instock" : featuredInTransit ? "is-intransit" : "is-preorder"}`}
                 >
-                  {featuredInStock ? "In stock" : featuredInTransit ? "In transit" : "Pre-order"}
+                  {featuredInStock
+                    ? featuredLowStock
+                      ? "Only a few left"
+                      : "In stock"
+                    : featuredInTransit
+                      ? "In transit"
+                      : "Pre-order"}
                 </span>
               </div>
               <div className="public-featured-copy">
@@ -1525,7 +1542,7 @@ function ProductPage({ addToCart, compareIds = [], toggleCompare }) {
               className={choice?.id === item.id ? "is-active" : ""}
               onClick={() => { setChoice(item); setQuantity(1); }}
             >
-              <span><b>{item.color}</b><small>{available(item) ? "In stock" : item.inTransit ? "In transit" : "Pre-order"}</small></span>
+              <span><b>{item.color}</b><small>{available(item) ? (item.lowStock ? "Only a few left" : "In stock") : item.inTransit ? "In transit" : "Pre-order"}</small></span>
               <strong>{money(item.price)}</strong>
             </button>
           ))}
@@ -1790,6 +1807,9 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
           const low = Math.min(...prices);
           const high = Math.max(...prices);
           const inStock = product.choices.some(available);
+          const compareAvailableChoices = product.choices.filter(available);
+          const lowStock =
+            inStock && compareAvailableChoices.length > 0 && compareAvailableChoices.every((c) => c.lowStock);
           const inTransit = !inStock && product.choices.some((c) => c.inTransit);
           return (
             <article className="public-compare-card" key={product.id}>
@@ -1806,7 +1826,7 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
               <h2>{product.name}</h2>
               <strong>{low === high ? money(low) : `${money(low)} – ${money(high)}`}</strong>
               <span className={`public-inline-badge ${inStock ? "" : inTransit ? "is-intransit" : "is-preorder"}`}>
-                {inStock ? "In stock" : inTransit ? "In transit" : "Pre-order"}
+                {inStock ? (lowStock ? "Only a few left" : "In stock") : inTransit ? "In transit" : "Pre-order"}
               </span>
               <Link to={`../paddle/${product.id}`} className="public-secondary-link">
                 View paddle <ArrowRight size={13} />
@@ -1864,7 +1884,7 @@ function ComparePage({ compareIds, toggleCompare, clearCompare }) {
                   {product.choices.map((choice) => (
                     <div key={choice.id || choice.color} className="public-compare-colour-row">
                       <span>{choice.color}</span>
-                      <small>{available(choice) ? "In stock" : choice.inTransit ? "In transit" : "Pre-order"}</small>
+                      <small>{available(choice) ? (choice.lowStock ? "Only a few left" : "In stock") : choice.inTransit ? "In transit" : "Pre-order"}</small>
                     </div>
                   ))}
                 </td>

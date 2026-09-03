@@ -195,14 +195,24 @@ async function inTransitInfoMaps(db) {
 }
 
 export async function publicCatalog(db) {
+  // low_stock mirrors the admin's own "Low stock" tier (stockState in
+  // src/lib/calc.js: quantity > 0 and at or under reorder_level) — computed
+  // here as a plain boolean, never the real quantity or reorder_level
+  // number. The storefront footer promises "no stock counts shown"; this
+  // keeps that promise while still letting a shopper see "only a few left"
+  // instead of an undifferentiated "in stock".
   const products = await db.query(`SELECT i.id, i.name, i.sku, i.category, i.sell_price, i.photo_url,
-    CASE WHEN COALESCE(i.quantity, 0) > 0 THEN 'available' ELSE 'unavailable' END AS availability
+    CASE WHEN COALESCE(i.quantity, 0) > 0 THEN 'available' ELSE 'unavailable' END AS availability,
+    CASE WHEN COALESCE(i.quantity, 0) > 0 AND COALESCE(i.quantity, 0) <= COALESCE(i.reorder_level, 0)
+      THEN 1 ELSE 0 END AS low_stock
     FROM inventory i
     WHERE COALESCE(i.notes, '') NOT LIKE '[archived]%'
       AND COALESCE(i.category, '') <> 'Add-on'
     ORDER BY i.name COLLATE NOCASE`);
   const variants = await db.query(`SELECT v.id, v.inventory_id, v.color, v.sku, v.selling_price_php, v.photo_url,
-    CASE WHEN COALESCE(v.quantity, 0) > 0 THEN 'available' ELSE 'unavailable' END AS availability
+    CASE WHEN COALESCE(v.quantity, 0) > 0 THEN 'available' ELSE 'unavailable' END AS availability,
+    CASE WHEN COALESCE(v.quantity, 0) > 0 AND COALESCE(v.quantity, 0) <= COALESCE(v.reorder_level, 0)
+      THEN 1 ELSE 0 END AS low_stock
     FROM inventory_variants v WHERE v.active = 1 ORDER BY v.color COLLATE NOCASE`);
   const photos = await db.query(`SELECT identity_type, identity_key, photo_url FROM storefront_photos
     WHERE active = 1 AND approval_status IN ('approved', 'published')`);
@@ -220,6 +230,7 @@ export async function publicCatalog(db) {
     return {
       id: p.id, name: p.name, sku: p.sku || null, category: p.category || null,
       price_php: Number(p.sell_price || 0), availability: p.availability,
+      low_stock: p.availability === "available" && !!p.low_stock,
       photo_url: photoMap.get(`model:${p.name}`) || photoMap.get(`brand:${String(p.name).split(/\s+/)[0]}`) || publicPhoto(p),
       preorder: p.availability === "unavailable" && !productInTransit && cutoff ? { cutoff_date: cutoff } : null,
       in_transit: productInTransit,
@@ -227,7 +238,8 @@ export async function publicCatalog(db) {
         const variantInTransit = v.availability === "unavailable" ? inTransit.byVariant.get(v.id) || null : null;
         return {
           id: v.id, color: v.color, sku: v.sku || null, price_php: Number(v.selling_price_php || p.sell_price || 0),
-          availability: v.availability, photo_url: photoMap.get(`model:${p.name}::${v.color}`) || publicPhoto(v),
+          availability: v.availability, low_stock: v.availability === "available" && !!v.low_stock,
+          photo_url: photoMap.get(`model:${p.name}::${v.color}`) || publicPhoto(v),
           preorder: v.availability === "unavailable" && !variantInTransit && cutoff ? { cutoff_date: cutoff } : null,
           in_transit: variantInTransit,
         };
