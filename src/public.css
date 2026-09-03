@@ -210,6 +210,10 @@ a.public-back-link{display:flex;width:fit-content;align-items:center;gap:6px;mar
    pre-order, so it gets a solid fill instead of the pre-order badge's
    plain white-on-teal. */
 .public-card-badge.is-intransit{background:var(--forest);color:#fff}
+/* Real stock on the shelf, ready now — outranks both other tiers visually
+   (solid teal, the brand's own accent) since it's the one badge that means
+   "buy it and it ships today," not "reserve it and wait." */
+.public-card-badge.is-instock{background:var(--teal);color:#fff}
 .public-placeholder{display:grid;width:100%;height:100%;place-content:center;justify-items:center;gap:8px;background:linear-gradient(150deg,#efeee8,#e2e0d8);color:var(--muted)}
 .public-placeholder img{width:40%;height:auto;max-height:34%;object-fit:contain;opacity:.35}
 .public-placeholder span{font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#81817b8f}

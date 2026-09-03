@@ -389,11 +389,14 @@ function ProductCard({ product, addToCart, compareIds, toggleCompare, justAdded,
       <div className="public-card-media">
         <Link to={`/paddle/${product.id}`} aria-label={`View ${product.name}`}>
           <ProductImage product={product} choice={product.choices[0]} className="public-card-image" />
-          {!inStock && (
-            <span className={`public-card-badge ${inTransit ? "is-intransit" : "is-preorder"}`}>
-              {inTransit ? "In transit" : "Pre-order"}
-            </span>
-          )}
+          {/* Every card carries a badge now, on purpose — a card with none
+              at all read as ambiguous (is it in stock, or did the badge
+              just not load?), not as "ready to ship." */}
+          <span
+            className={`public-card-badge ${inStock ? "is-instock" : inTransit ? "is-intransit" : "is-preorder"}`}
+          >
+            {inStock ? "In stock" : inTransit ? "In transit" : "Pre-order"}
+          </span>
         </Link>
         {toggleCompare && (
           <button
@@ -1134,6 +1137,12 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
   const isDefaultView = sort === "featured" && category === "All" && brand === "All brands" && !search.trim();
   const showFeatured = isDefaultView && filtered.length >= 4;
   const featuredProduct = showFeatured ? filtered[0] : null;
+  // Same badge logic as ProductCard — the featured band is a separate
+  // component, not a grid card rendered through ProductCard, so it needs
+  // its own copy rather than silently inheriting a fix made there.
+  const featuredInStock = featuredProduct ? featuredProduct.choices.some(available) : false;
+  const featuredInTransit =
+    featuredProduct && !featuredInStock ? featuredProduct.choices.some((c) => c.inTransit) : false;
   const gridProducts = showFeatured ? filtered.slice(1) : filtered;
   // Paginated on mobile only: only the current page's worth of gridProducts
   // is ever split into first/second slice, so "Load More" is really just
@@ -1302,6 +1311,11 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
             <Reveal as="section" className="public-featured-band">
               <div className="public-featured-media">
                 <ProductImage product={featuredProduct} choice={featuredProduct.choices[0]} />
+                <span
+                  className={`public-card-badge ${featuredInStock ? "is-instock" : featuredInTransit ? "is-intransit" : "is-preorder"}`}
+                >
+                  {featuredInStock ? "In stock" : featuredInTransit ? "In transit" : "Pre-order"}
+                </span>
               </div>
               <div className="public-featured-copy">
                 <span className="public-featured-brand">{featuredProduct.brand}</span>
