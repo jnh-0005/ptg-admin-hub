@@ -958,16 +958,29 @@ export async function saveOrder({ id, orderRow, items, freebies }) {
   const requirement = orderRow.payment_requirement === "full" ? "full" : "deposit";
   const status = normaliseOrderStatus(orderRow.status, requirement);
 
-  const lines = (items || []).filter((l) => l.product_id && M(l.quantity) > 0);
+  const lines = (items || []).filter((l) => l.product_id && M(l.quantity) > 0).map((l) => ({ ...l }));
   const gifts = (freebies || []).filter((f) => M(f.quantity) > 0);
 
   // Recompute the legacy money columns from the same numbers the UI shows.
-  const [productsRes, batchesRes, batchItemsRes, settingsRes, variantsRes] = await dbBatch([
-    { sql: "SELECT id, source_cost_vnd FROM inventory" },
+  const [productsRes, batchesRes, batchItemsRes, settingsRes, variantsRes, inTransitClaimsRes] = await dbBatch([
+    { sql: "SELECT id, source_cost_vnd, quantity FROM inventory" },
     { sql: "SELECT * FROM batches" },
     { sql: "SELECT * FROM batch_items" },
     { sql: "SELECT php_to_vnd_rate FROM settings WHERE id = 1" },
     { sql: "SELECT * FROM inventory_variants" },
+    // Same shape as inTransitInfoMaps in api/v1/_shared.js — kept as a
+    // parallel query rather than a shared import because this file runs in
+    // the browser (over the admin's own __folkdata/query transport) while
+    // _shared.js runs server-side in the storefront API's Vercel functions;
+    // there's no runtime the two could share the function from. See the
+    // batch_id note below for why this exists at all.
+    {
+      sql: `SELECT oi.batch_id, oi.variant_id, oi.inventory_id, SUM(oi.quantity) AS claimed
+            FROM order_items oi JOIN orders o ON o.id = oi.order_id
+            WHERE oi.batch_id IS NOT NULL AND o.status <> 'Cancelled' AND oi.order_id <> ?
+            GROUP BY oi.batch_id, oi.variant_id, oi.inventory_id`,
+      args: [id || -1],
+    },
   ]);
   const rate = M(settingsRes.rows[0]?.php_to_vnd_rate, DEFAULT_SETTINGS.php_to_vnd_rate);
   const variantsByProduct = new Map();
@@ -982,6 +995,51 @@ export async function saveOrder({ id, orderRow, items, freebies }) {
     rate,
     variantsByProduct,
   );
+
+  // Claim any zero-on-hand line against a real in-transit batch, the same
+  // way the storefront checkout already does (buildOrder in
+  // api/v1/_shared.js) — without this, an order placed here for a paddle
+  // that's already fully claimed via the admin never showed up against that
+  // batch's REMAINING count, so the storefront kept offering the same
+  // "in transit" stock as if this reservation had never happened. A line
+  // only claims when the matched batch line has enough remaining to cover
+  // the whole line — a partial match falls back to no claim, same rule as
+  // the storefront's own no-partial-claim behaviour.
+  const claimedByKey = new Map();
+  for (const c of inTransitClaimsRes.rows) {
+    const key =
+      c.variant_id != null ? `${c.batch_id}:v:${c.variant_id}` : `${c.batch_id}:p:${c.inventory_id}`;
+    claimedByKey.set(key, (claimedByKey.get(key) || 0) + M(c.claimed));
+  }
+  const inTransitBatchIds = new Set(
+    batchesRes.rows.filter((b) => b.status === "In Transit").map((b) => b.id),
+  );
+  const batchById = new Map(batchesRes.rows.map((b) => [b.id, b]));
+  const inTransitByVariant = new Map();
+  const inTransitByProduct = new Map();
+  for (const bi of batchItemsRes.rows) {
+    if (!inTransitBatchIds.has(bi.batch_id)) continue;
+    const key = bi.variant_id != null ? `${bi.batch_id}:v:${bi.variant_id}` : `${bi.batch_id}:p:${bi.product_id}`;
+    const remaining = M(bi.quantity) - (claimedByKey.get(key) || 0);
+    if (remaining <= 0) continue;
+    const map = bi.variant_id != null ? inTransitByVariant : inTransitByProduct;
+    const mapKey = bi.variant_id != null ? bi.variant_id : bi.product_id;
+    const readyDate = batchById.get(bi.batch_id)?.expected_arrival || null;
+    const existing = map.get(mapKey);
+    if (!existing || (readyDate && (!existing.readyDate || readyDate < existing.readyDate))) {
+      map.set(mapKey, { batchId: bi.batch_id, remaining, readyDate });
+    }
+  }
+  const productQuantityById = new Map(productsRes.rows.map((p) => [p.id, M(p.quantity)]));
+  const variantById = new Map(variantsRes.rows.map((v) => [v.id, v]));
+  for (const l of lines) {
+    const onHand = l.variant_id
+      ? M(variantById.get(l.variant_id)?.quantity)
+      : M(productQuantityById.get(l.product_id));
+    if (onHand > 0) continue;
+    const info = l.variant_id ? inTransitByVariant.get(l.variant_id) : inTransitByProduct.get(l.product_id);
+    if (info && info.remaining >= M(l.quantity)) l.batch_id = info.batchId;
+  }
   const math = orderMath(
     { ...orderRow, payment_requirement: requirement },
     lines.map((l) => ({
@@ -1064,8 +1122,8 @@ export async function saveOrder({ id, orderRow, items, freebies }) {
     { sql: "DELETE FROM order_items WHERE order_id = ?", args: [orderId] },
     { sql: "DELETE FROM order_freebies WHERE order_id = ?", args: [orderId] },
     ...lines.map((l) => ({
-      sql: `INSERT INTO order_items (order_id, inventory_id, variant_id, product_name, quantity, unit_price, unit_cost)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO order_items (order_id, inventory_id, variant_id, product_name, quantity, unit_price, unit_cost, batch_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         orderId,
         l.product_id,
@@ -1074,6 +1132,7 @@ export async function saveOrder({ id, orderRow, items, freebies }) {
         Math.max(1, int(l.quantity)),
         Math.max(0, M(l.sale_price_php)),
         Math.max(0, M(l.actual_landed_cost_php)),
+        l.batch_id ?? null,
       ],
     })),
     ...gifts.map((f) => ({

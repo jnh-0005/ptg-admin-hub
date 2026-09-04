@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Regression test for a real bug: completing an order (Reserved -> Paid ->
@@ -29,6 +29,10 @@ import { describe, expect, it, vi } from "vitest";
 
 const dbBatchCalls = [];
 let priorStatus = "Reserved";
+// Overridable per test — defaults reproduce the original fixture (1 unit
+// on hand, no in-transit batch, no existing claims against one).
+let variantQuantity = 1;
+let batchScenario = null; // { batches, batchItems, claims }
 
 function rowsFor(sql) {
   if (/SELECT status FROM orders/i.test(sql)) return [{ status: priorStatus }];
@@ -36,12 +40,26 @@ function rowsFor(sql) {
     return [{ product_id: 14, variant_id: 1, quantity: 1 }];
   }
   if (/SELECT freebie_id, quantity FROM order_freebies/i.test(sql)) return [];
-  if (/SELECT id, source_cost_vnd FROM inventory/i.test(sql)) return [{ id: 14, source_cost_vnd: 0 }];
-  if (/SELECT \* FROM batches/i.test(sql)) return [];
-  if (/SELECT \* FROM batch_items/i.test(sql)) return [];
+  if (/SELECT id, source_cost_vnd, quantity FROM inventory/i.test(sql)) return [{ id: 14, source_cost_vnd: 0, quantity: 0 }];
+  // The claims query, checked first — it also matches the file's own doc
+  // comment text "SELECT oi.batch_id" if tested loosely, so anchor on a
+  // fragment only that query's SQL contains.
+  if (/FROM order_items oi JOIN orders o/i.test(sql)) return batchScenario?.claims || [];
+  if (/SELECT \* FROM batches/i.test(sql)) return batchScenario?.batches || [];
+  if (/SELECT \* FROM batch_items/i.test(sql)) return batchScenario?.batchItems || [];
   if (/SELECT php_to_vnd_rate FROM settings/i.test(sql)) return [{ php_to_vnd_rate: 416 }];
   if (/SELECT \* FROM inventory_variants/i.test(sql)) {
-    return [{ id: 1, inventory_id: 14, color: "Jade Mist", quantity: 1, active: 1, selling_price_php: 9800, source_cost_vnd: 0 }];
+    return [
+      {
+        id: 1,
+        inventory_id: 14,
+        color: "Jade Mist",
+        quantity: variantQuantity,
+        active: 1,
+        selling_price_php: 9800,
+        source_cost_vnd: 0,
+      },
+    ];
   }
   return [];
 }
@@ -56,6 +74,11 @@ vi.mock("./schema", () => ({
 }));
 
 const { saveOrder } = await import("./data.js");
+
+afterEach(() => {
+  variantQuantity = 1;
+  batchScenario = null;
+});
 
 const baseOrder = (status) => ({
   id: 1,
@@ -172,5 +195,70 @@ describe("saveOrder: stock moves on Paid, not only on Completed", () => {
       .some((s) => /UPDATE inventory_variants SET quantity|UPDATE inventory SET quantity/i.test(s.sql));
     expect(anyStockWrite).toBe(false);
     expect(result.stockApplied).toBe(false);
+  });
+});
+
+/**
+ * Regression test for a real bug caught live: reserving an in-transit
+ * paddle by creating the order directly in the admin (rather than through
+ * the storefront checkout) never wrote order_items.batch_id, so the
+ * storefront's own "remaining in transit" count (inTransitInfoMaps in
+ * api/v1/_shared.js) never saw that reservation — it kept showing the same
+ * in-transit stock as available to a second buyer instead of falling back
+ * to a plain pre-order once fully claimed. saveOrder now computes the same
+ * claim the storefront checkout's buildOrder already does.
+ */
+function findOrderItemInsert() {
+  return dbBatchCalls.flat().find((s) => /INSERT INTO order_items/i.test(s.sql));
+}
+
+describe("saveOrder: claims in-transit stock the same way the storefront checkout does", () => {
+  it("sets batch_id on a zero-on-hand line when a real in-transit batch has enough remaining", async () => {
+    priorStatus = "Pending";
+    variantQuantity = 0;
+    batchScenario = {
+      batches: [{ id: 55, status: "In Transit", expected_arrival: "2026-09-15" }],
+      batchItems: [{ batch_id: 55, product_id: 14, variant_id: 1, quantity: 3 }],
+      claims: [],
+    };
+    dbBatchCalls.length = 0;
+    await saveOrder(baseOrder("Reserved"));
+
+    const insert = findOrderItemInsert();
+    expect(insert).toBeDefined();
+    expect(insert.args.at(-1)).toBe(55); // batch_id is the last column
+  });
+
+  it("does not claim when the in-transit batch is already fully claimed by other orders", async () => {
+    priorStatus = "Pending";
+    variantQuantity = 0;
+    batchScenario = {
+      batches: [{ id: 55, status: "In Transit", expected_arrival: "2026-09-15" }],
+      batchItems: [{ batch_id: 55, product_id: 14, variant_id: 1, quantity: 3 }],
+      // Some OTHER order already claimed all 3 — this order's own id (1) is
+      // excluded from the claims query itself, so this row represents a
+      // different order, not double-counting this one.
+      claims: [{ batch_id: 55, variant_id: 1, inventory_id: 14, claimed: 3 }],
+    };
+    dbBatchCalls.length = 0;
+    await saveOrder(baseOrder("Reserved"));
+
+    const insert = findOrderItemInsert();
+    expect(insert.args.at(-1)).toBeNull();
+  });
+
+  it("does not claim when the line already has real stock on hand", async () => {
+    priorStatus = "Pending";
+    variantQuantity = 1; // real stock — not a zero-on-hand reservation
+    batchScenario = {
+      batches: [{ id: 55, status: "In Transit", expected_arrival: "2026-09-15" }],
+      batchItems: [{ batch_id: 55, product_id: 14, variant_id: 1, quantity: 3 }],
+      claims: [],
+    };
+    dbBatchCalls.length = 0;
+    await saveOrder(baseOrder("Reserved"));
+
+    const insert = findOrderItemInsert();
+    expect(insert.args.at(-1)).toBeNull();
   });
 });
