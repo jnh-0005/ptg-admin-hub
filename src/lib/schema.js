@@ -242,7 +242,15 @@ async function columnsOf(table) {
  * existed as a bare (non-per-colour) row in the first place.
  */
 const PADDLES = [
-  { name: "Kamito Alpha X", sku: "PTG-KAX", price: 8900 },
+  // "Kamito Alpha X Rose Pink", not bare "Kamito Alpha X" — same rename bug
+  // as every other entry documented in this file: the real row (PTG-KAX)
+  // only ever existed per-colour, so the bare name never matched it and sat
+  // dormant until an unrelated INIT_VERSION bump (2026-09-09, the RLS/grants
+  // security fix) made seedCatalog() run again and inserted it as a fresh
+  // phantom duplicate (PTG-KAX-2) straight into production — caught and
+  // deleted the same day. Old spelling kept as an alias, per this file's own
+  // rule above.
+  { name: "Kamito Alpha X Rose Pink", sku: "PTG-KAX", price: 8900, aliases: ["Kamito Alpha X"] },
   // No bare "Selkirk Omni Clay" / "Selkirk Boomstick Clay" / "Selkirk Omni
   // Hydro-Cosmic" / "Honolulu J6CR" / "RPM Q2" / "RPM V2" entries — same bug
   // as the Sypik Triton 5 fix below, discovered live the same way: the real
