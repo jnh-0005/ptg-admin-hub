@@ -103,7 +103,14 @@ a.public-hero-cta{display:inline-flex;align-items:center;gap:10px;padding:0 26px
 .public-feature{padding:64px 0;background:var(--forest);overflow:hidden}
 .public-feature-copy{max-width:900px;margin:0 auto 28px;padding:0 20px}
 .logoloop{position:relative}
-.logoloop.is-fade-mask{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 8%,#000 92%,transparent 100%)}
+/* 8%/92% used to be the fade zone here — on a ~375-412px mobile viewport
+   that's only ~30px, far narrower than a single logo (up to 140px wide per
+   .logoloop-item img's max-width below), so a logo spent almost no time
+   actually fading before hard-vanishing at the edge — it read as a crop,
+   not a fade (reported live: "look at the sides its cropped"). 18%/82%
+   roughly doubles the transition zone so a full logo width has room to
+   genuinely soften out instead of appearing to be cut off. */
+.logoloop.is-fade-mask{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18%,#000 82%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 18%,#000 82%,transparent 100%)}
 .logoloop.is-fade-solid{overflow:hidden}
 .logoloop-fade{position:absolute;top:0;bottom:0;width:80px;z-index:1;pointer-events:none}
 .logoloop-fade-left{left:0;background:linear-gradient(90deg,var(--logoloop-fade-color),transparent)}
