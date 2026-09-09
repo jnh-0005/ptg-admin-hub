@@ -58,6 +58,44 @@ const LEGACY_TABLES = [
   `CREATE TABLE IF NOT EXISTS order_freebies (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, freebie_id INTEGER, freebie_name TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, unit_cost REAL NOT NULL DEFAULT 0, FOREIGN KEY(order_id) REFERENCES orders(id), FOREIGN KEY(freebie_id) REFERENCES freebies(id))`,
 ];
 
+/**
+ * SECURITY: every one of these tables sat with Row-Level Security disabled
+ * (Supabase's own dashboard flags this as `rls_disabled_in_public` — a
+ * project-wide, unauthenticated exposure). This app never queries Postgres
+ * through Supabase's PostgREST/anon-key layer that RLS actually gates —
+ * `supabase-js` here is used ONLY for `.auth.*` (login/session; see
+ * src/lib/supabaseAuth.js), and every real read/write goes through
+ * api/query.js (behind requireUser()) or api/v1/*.js, both of which connect
+ * with the direct Postgres role from DATABASE_URL and so bypass RLS as the
+ * table owner regardless of policy. So RLS being off cost this app nothing
+ * functionally — but VITE_SUPABASE_ANON_KEY is deliberately public (baked
+ * into the storefront's JS bundle), and with RLS off, that key alone let
+ * anyone hit Supabase's own REST API directly and read/write every table
+ * here, completely bypassing this app's auth and API layer. Enabling RLS
+ * with zero policies blocks that path entirely with zero effect on the app,
+ * since nothing here relies on the PostgREST path RLS controls.
+ * `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` is idempotent — safe to
+ * re-run if this ever needs to move again.
+ */
+const RLS_TABLES = [
+  "settings",
+  "batches",
+  "batch_items",
+  "payments",
+  "batch_consumables",
+  "api_idempotency",
+  "app_meta",
+  "storefront_photos",
+  "inventory_variants",
+  "stock_movements",
+  "order_tracking",
+  "inventory",
+  "freebies",
+  "orders",
+  "order_items",
+  "order_freebies",
+];
+
 /** Columns the console needs that the original five tables did not carry. */
 const ADDED_COLUMNS = [
   ["settings", "desired_profit_margin_percent", "REAL NOT NULL DEFAULT 20"],
@@ -305,7 +343,7 @@ async function runBatch(statements) {
 // on databases stamped with an older version. Forgetting to bump it means a
 // new column or seed entry silently never reaches an already-initialized
 // database.
-const INIT_VERSION = "2026-08-30.3";
+const INIT_VERSION = "2026-09-09.1";
 
 export function initDb() {
   if (!ready) {
@@ -358,6 +396,12 @@ export function initDb() {
 }
 
 async function migrate() {
+  // Runs before the column migrations below on purpose — ENABLE ROW LEVEL
+  // SECURITY takes no dependency on any column existing, and putting the
+  // security fix first means a failure partway through the rest of migrate()
+  // never leaves this specific step undone.
+  await runBatch(RLS_TABLES.map((table) => ({ sql: `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY` })));
+
   const seen = new Map();
   for (const [table, column, type] of ADDED_COLUMNS) {
     if (!seen.has(table)) seen.set(table, await columnsOf(table));
