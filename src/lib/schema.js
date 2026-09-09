@@ -47,6 +47,15 @@ const NEW_TABLES = [
   `CREATE TABLE IF NOT EXISTS inventory_variants (id INTEGER PRIMARY KEY AUTOINCREMENT, inventory_id INTEGER NOT NULL, color TEXT NOT NULL, sku TEXT, quantity INTEGER NOT NULL DEFAULT 0, reorder_level INTEGER NOT NULL DEFAULT 0, selling_price_php REAL NOT NULL DEFAULT 0, source_cost_vnd REAL NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(inventory_id) REFERENCES inventory(id))`,
   `CREATE TABLE IF NOT EXISTS stock_movements (id INTEGER PRIMARY KEY AUTOINCREMENT, inventory_id INTEGER, variant_id INTEGER, movement_type TEXT NOT NULL, quantity INTEGER NOT NULL, reference_type TEXT, reference_id INTEGER, notes TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(inventory_id) REFERENCES inventory(id), FOREIGN KEY(variant_id) REFERENCES inventory_variants(id))`,
   `CREATE TABLE IF NOT EXISTS order_tracking (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, status TEXT NOT NULL, tracking_number TEXT, carrier TEXT, location TEXT, event_date TEXT, notes TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id))`,
+  /*
+    PROMOTION MONEY, TRACKED SEPARATELY FROM PRODUCT PROFIT. Ad spend (Meta
+    boosts/campaigns) isn't attributable to any one order or paddle the way
+    a batch's landed cost is, so it deliberately isn't a column on orders or
+    batches — it's its own simple log with its own running total, kept for
+    the operator's own record rather than folded into Dashboard's profit
+    math. See src/pages/AdSpend.jsx.
+  */
+  `CREATE TABLE IF NOT EXISTS ad_spend (id INTEGER PRIMARY KEY AUTOINCREMENT, spend_date TEXT NOT NULL, amount_php REAL NOT NULL DEFAULT 0, note TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
 ];
 
 /** Safety net only: folk already created these, this covers a cold start. */
@@ -107,6 +116,7 @@ const RLS_TABLES = [
   "orders",
   "order_items",
   "order_freebies",
+  "ad_spend",
 ];
 
 /** Columns the console needs that the original five tables did not carry. */
@@ -364,7 +374,7 @@ async function runBatch(statements) {
 // on databases stamped with an older version. Forgetting to bump it means a
 // new column or seed entry silently never reaches an already-initialized
 // database.
-const INIT_VERSION = "2026-09-09.2";
+const INIT_VERSION = "2026-09-09.3";
 
 export function initDb() {
   if (!ready) {

@@ -12,6 +12,7 @@ import {
   Boat,
   Camera,
   ChartPieSlice,
+  Megaphone,
   Package,
   Receipt,
   SlidersHorizontal,
@@ -40,6 +41,7 @@ const Batches = lazy(() => import("./pages/Batches"));
 const Payments = lazy(() => import("./pages/Payments"));
 const Settings = lazy(() => import("./pages/Settings"));
 const StorefrontPhotos = lazy(() => import("./pages/StorefrontPhotos"));
+const AdSpend = lazy(() => import("./pages/AdSpend"));
 
 /**
  * TAB ORDER IS THE APP'S SPATIAL MODEL. A page's index here decides which way
@@ -75,6 +77,7 @@ const TABS = [
  */
 const SECONDARY = [
   { to: "/storefront-photos", label: "Storefront photos", short: "Photos", icon: Camera },
+  { to: "/ad-spend", label: "Ad spend", short: "Ads", icon: Megaphone },
 ];
 
 /** Every routed page, in the order that decides which way a page travels. */
@@ -120,6 +123,7 @@ function AnimatedRoutes() {
             <Route path="/payments" element={<Payments />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/storefront-photos" element={<StorefrontPhotos />} />
+            <Route path="/ad-spend" element={<AdSpend />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </Suspense>

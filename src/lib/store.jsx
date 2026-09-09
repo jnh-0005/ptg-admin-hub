@@ -20,6 +20,7 @@ const EMPTY = {
   movements: [],
   tracking: [],
   storefrontPhotos: [],
+  adSpend: [],
 };
 
 export function StoreProvider({ children }) {

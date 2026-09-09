@@ -128,6 +128,7 @@ export async function loadAll() {
     { sql: "SELECT * FROM order_tracking ORDER BY id ASC" },
     { sql: "SELECT * FROM batch_consumables ORDER BY batch_id ASC, id ASC" },
     { sql: "SELECT * FROM storefront_photos ORDER BY identity_type ASC, identity_key COLLATE NOCASE ASC" },
+    { sql: "SELECT * FROM ad_spend ORDER BY spend_date DESC, id DESC" },
   ]);
 
   const s = res[0].rows[0] || { ...DEFAULT_SETTINGS };
@@ -158,9 +159,10 @@ export async function loadAll() {
     movements: res[10].rows,
     tracking: res[11].rows,
     batchConsumables: res[12].rows,
-    // Fourteen statements go out as 10 + 4 and come back concatenated in the
+    // Fifteen statements go out as 10 + 5 and come back concatenated in the
     // order they were written, so this positional read stays correct.
     storefrontPhotos: res[13].rows.map(toStorefrontPhoto),
+    adSpend: res[14].rows,
   };
 }
 
@@ -1350,4 +1352,23 @@ export async function savePayment({ id, payment }) {
 
 export async function deletePayment(id) {
   await db("DELETE FROM payments WHERE id = ?", [id]);
+}
+
+/* -------------------------------------------------------------- ad spend */
+
+export async function saveAdSpend({ id, entry }) {
+  const args = [entry.spend_date, Math.max(0, M(entry.amount_php)), entry.note?.trim() || null];
+  if (id) {
+    await db("UPDATE ad_spend SET spend_date = ?, amount_php = ?, note = ? WHERE id = ?", [...args, id]);
+    return id;
+  }
+  const res = await db(
+    "INSERT INTO ad_spend (spend_date, amount_php, note) VALUES (?, ?, ?)",
+    args,
+  );
+  return res.lastInsertId;
+}
+
+export async function deleteAdSpend(id) {
+  await db("DELETE FROM ad_spend WHERE id = ?", [id]);
 }
