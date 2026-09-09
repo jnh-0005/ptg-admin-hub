@@ -36,6 +36,17 @@ import { DEPOSIT_RATIO } from "../lib/depositRatio";
 import { brandOf, PUBLIC_CATALOG_PATH, resolvePhotoAssetUrl } from "../lib/storefront";
 import LogoLoop from "../components/LogoLoop";
 
+// Moved here from main.jsx on purpose — see the comment there. Loading as
+// part of THIS lazy chunk means an admin visitor's browser never fetches
+// these fonts or public.css at all (index.css's Tailwind output covers
+// every className this page's own admin-side siblings use instead).
+import "@fontsource/poppins/400.css";
+import "@fontsource/poppins/500.css";
+import "@fontsource/poppins/600.css";
+import "@fontsource/poppins/700.css";
+import "@fontsource/poppins/800.css";
+import "../public.css";
+
 // A visitor never sees a real stock count (per docs/storefront-api-v1.md, the
 // public API returns only "available"/"unavailable") — this just bounds how
 // many of one colour a single order line can request.
@@ -1184,16 +1195,23 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
         <picture>
           <source media="(min-width: 960px)" srcSet="/images/ptg-hero-desktop.webp" />
           {/* This is the page's LCP element (confirmed via Lighthouse) —
-              fetchPriority tells the browser to fetch it ahead of
+              fetchpriority tells the browser to fetch it ahead of
               lower-priority requests instead of discovering it at normal
-              priority partway through the page's own script/style load. */}
+              priority partway through the page's own script/style load.
+              Lowercase, not the camelCase fetchPriority: this app's React
+              (18.3.1) doesn't have that prop in its known-DOM-props list
+              yet, so camelCase reaches the DOM correctly (React forwards
+              unrecognized attribute-shaped props as-is) but logs a dev-mode
+              "does not recognize" warning on every render — lowercase is
+              the plain HTML attribute name, which React passes through
+              silently, same resulting DOM attribute either way. */}
           <img
             className="public-hero-bg"
             src="/images/ptg-court-banner-v2.webp"
             alt="Paddle To Go — Cagayan de Oro, Philippines"
             width="2658"
             height="984"
-            fetchPriority="high"
+            fetchpriority="high"
           />
         </picture>
         <div className="public-hero-scrim" />
