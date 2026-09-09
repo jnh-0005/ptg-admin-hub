@@ -8,6 +8,7 @@ import {
   Gift,
   ImageSquare,
   Info,
+  Megaphone,
   PencilSimple,
   Plus,
   Trash,
@@ -588,6 +589,35 @@ export default function Settings() {
           </div>
 
           <p className="num mt-2.5 break-all text-micro text-ink-4">{PUBLIC_CATALOG_PATH}</p>
+        </motion.div>
+      </Section>
+
+      {/* Same reason Storefront photos gets a link here, not just a rail
+          entry: the desktop rail (where both secondary desks live — see
+          SECONDARY in AdminApp.jsx) is lg:flex, hidden on mobile. Without
+          this, Ad spend was only reachable on a phone by typing /ad-spend
+          directly — no visible way in. */}
+      <Section title="Marketing">
+        <motion.div variants={listChild} className="card p-3.5 sm:p-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-cobalt-wash text-cobalt">
+              <Megaphone size={18} weight="fill" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold">Ad spend</p>
+              <p className="mt-0.5 break-words text-micro leading-relaxed text-ink-3">
+                What you put into Facebook/Instagram boosts and campaigns, tracked on its own —
+                separate from product profit.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 border-t border-line-soft pt-3">
+            <Link to="/ad-spend" className="btn-quiet w-full" onClick={() => haptic(6)}>
+              <Megaphone size={16} />
+              Ad spend
+            </Link>
+          </div>
         </motion.div>
       </Section>
 
