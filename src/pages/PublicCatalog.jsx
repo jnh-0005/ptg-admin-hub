@@ -1183,7 +1183,18 @@ function Shop({ addToCart, compareIds, toggleCompare }) {
             matches every other desktop-only treatment already in this file. */}
         <picture>
           <source media="(min-width: 960px)" srcSet="/images/ptg-hero-desktop.webp" />
-          <img className="public-hero-bg" src="/images/ptg-court-banner-v2.webp" alt="Paddle To Go — Cagayan de Oro, Philippines" width="2658" height="984" />
+          {/* This is the page's LCP element (confirmed via Lighthouse) —
+              fetchPriority tells the browser to fetch it ahead of
+              lower-priority requests instead of discovering it at normal
+              priority partway through the page's own script/style load. */}
+          <img
+            className="public-hero-bg"
+            src="/images/ptg-court-banner-v2.webp"
+            alt="Paddle To Go — Cagayan de Oro, Philippines"
+            width="2658"
+            height="984"
+            fetchPriority="high"
+          />
         </picture>
         <div className="public-hero-scrim" />
         <Reveal as="div" className="public-hero-text">
