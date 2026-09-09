@@ -74,7 +74,20 @@ const LEGACY_TABLES = [
  * here, completely bypassing this app's auth and API layer. Enabling RLS
  * with zero policies blocks that path entirely with zero effect on the app,
  * since nothing here relies on the PostgREST path RLS controls.
- * `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` is idempotent — safe to
+ *
+ * No policies is the real end state here, not a stopgap awaiting one:
+ * there's no customer login this app could write an ownership policy
+ * against (a storefront order is placed anonymously — no `orders.user_id`
+ * / `auth.uid()` link exists), and even the admin's authenticated session
+ * never talks to Postgres through the Data API either. So on top of RLS
+ * (which already denies `anon`/`authenticated` by default with no
+ * policies), the table grants themselves are revoked from both roles too
+ * — belt-and-suspenders, since RLS and grants are independent layers and
+ * a policy added here by mistake later shouldn't be the only thing
+ * standing between these tables and the public internet.
+ *
+ * Both `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` and
+ * `REVOKE ALL ... FROM anon, authenticated` are idempotent — safe to
  * re-run if this ever needs to move again.
  */
 const RLS_TABLES = [
@@ -343,7 +356,7 @@ async function runBatch(statements) {
 // on databases stamped with an older version. Forgetting to bump it means a
 // new column or seed entry silently never reaches an already-initialized
 // database.
-const INIT_VERSION = "2026-09-09.1";
+const INIT_VERSION = "2026-09-09.2";
 
 export function initDb() {
   if (!ready) {
@@ -396,11 +409,14 @@ export function initDb() {
 }
 
 async function migrate() {
-  // Runs before the column migrations below on purpose — ENABLE ROW LEVEL
-  // SECURITY takes no dependency on any column existing, and putting the
-  // security fix first means a failure partway through the rest of migrate()
-  // never leaves this specific step undone.
+  // Runs before the column migrations below on purpose — neither statement
+  // takes any dependency on a column existing, and putting the security fix
+  // first means a failure partway through the rest of migrate() never
+  // leaves this specific step undone.
   await runBatch(RLS_TABLES.map((table) => ({ sql: `ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY` })));
+  await runBatch(
+    RLS_TABLES.map((table) => ({ sql: `REVOKE ALL ON TABLE ${table} FROM anon, authenticated` })),
+  );
 
   const seen = new Map();
   for (const [table, column, type] of ADDED_COLUMNS) {
