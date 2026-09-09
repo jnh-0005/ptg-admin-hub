@@ -29,6 +29,39 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231F5FE0'/%3E%3Ccircle cx='11' cy='11' r='2.6' fill='%23B4D633'/%3E%3Ccircle cx='21' cy='11' r='2.6' fill='%23FFFFFF'/%3E%3Ccircle cx='11' cy='21' r='2.6' fill='%23FFFFFF'/%3E%3Ccircle cx='21' cy='21' r='2.6' fill='%23B4D633'/%3E%3C/svg%3E"
     />
+
+    <script>
+      // This app is a client-only SPA — both routes share this one index.html,
+      // and the storefront's hero image (the confirmed LCP element on
+      // /public/paddles-7x4k) doesn't exist in the DOM at all until React
+      // renders it, so the browser can't discover its URL until the JS bundle
+      // has downloaded AND parsed AND run — Lighthouse's prioritize-lcp-image
+      // audit flagged exactly this (~650ms of LCP savings), and fetchpriority
+      // on the <img> itself (see PublicCatalog.jsx) only affects request
+      // priority AFTER discovery, not the late discovery itself. Guarded by
+      // pathname (matches PUBLIC_CATALOG_PATH in lib/storefront.js — kept in
+      // sync manually, there's no way to share that JS constant with a static
+      // HTML file) so the admin console never preloads an image it never
+      // shows. Mirrors the <picture>/<source> split in PublicCatalog.jsx: two
+      // preloads, one per breakpoint, exactly like the two <source>s pick
+      // between at render time.
+      if (location.pathname.indexOf("/public/paddles-7x4k") === 0) {
+        var mobile = document.createElement("link");
+        mobile.rel = "preload";
+        mobile.as = "image";
+        mobile.href = "/images/ptg-court-banner-v2.webp";
+        mobile.fetchPriority = "high";
+        document.head.appendChild(mobile);
+
+        var desktop = document.createElement("link");
+        desktop.rel = "preload";
+        desktop.as = "image";
+        desktop.href = "/images/ptg-hero-desktop.webp";
+        desktop.media = "(min-width: 960px)";
+        desktop.fetchPriority = "high";
+        document.head.appendChild(desktop);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
