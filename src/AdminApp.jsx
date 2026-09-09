@@ -27,6 +27,13 @@ import { StoreProvider, useStore } from "./lib/store";
 import { spring } from "./lib/motion";
 import { M } from "./lib/calc";
 
+// Moved here from main.jsx on purpose — see the comment there. Loading as
+// part of THIS lazy chunk means a storefront visitor's browser never
+// fetches Tailwind's generated utility CSS or these fonts at all.
+import "@fontsource-variable/schibsted-grotesk";
+import "@fontsource-variable/jetbrains-mono";
+import "./index.css";
+
 /**
  * Lazy, not eager, on purpose: see the note in App.jsx about why AdminApp
  * itself is lazy-loaded. Each page (Dashboard/Orders/etc — including
