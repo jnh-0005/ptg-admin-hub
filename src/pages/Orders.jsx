@@ -1637,8 +1637,18 @@ function OrderTray({ open, order, items, freebies, origin, onClose, onSave, onDe
 
           <div>
             <Field label="Payment requirement">
+              {/* 25% in-transit deposit is legacy-only now — every stock
+                  state (on hand, in transit, plain pre-order) is the same
+                  50%-now/50%-before-completion process, no exceptions. Only
+                  reason "deposit_25" can still appear here is an existing
+                  order already saved at that rate (its label stays visible
+                  so the form doesn't silently show a value not in the
+                  list) — it's never offered as a choice for a fresh order
+                  or once you've switched away from it. */}
               <Select value={form.payment_requirement} onChange={setRequirement}>
-                {PAYMENT_REQUIREMENTS.map((r) => (
+                {PAYMENT_REQUIREMENTS.filter(
+                  (r) => r !== "deposit_25" || form.payment_requirement === "deposit_25",
+                ).map((r) => (
                   <option key={r} value={r}>
                     {REQUIREMENT_LABEL[r]}
                   </option>
