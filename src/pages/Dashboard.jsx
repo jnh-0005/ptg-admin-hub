@@ -46,12 +46,41 @@ import { spring } from "../lib/motion";
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { products, orders, batches, payments, settings, derived, freebies, movements, productsById } =
-    useStore();
+  const {
+    products,
+    orders,
+    batches,
+    payments,
+    settings,
+    derived,
+    freebies,
+    movements,
+    productsById,
+    adSpend,
+  } = useStore();
   const [explainOpen, setExplainOpen] = useState(false);
   const [profitSort, setProfitSort] = useState("best");
   const [origin, captureOrigin] = useOrigin();
   const d = derived;
+
+  /**
+   * NET PROFIT, KEPT ENTIRELY SEPARATE FROM d.actualProfit ABOVE. Ad spend
+   * isn't attributable to any one order the way landed cost is — see
+   * AdSpend.jsx — so it never touches d.actualProfit itself (batch
+   * profitability, the pricing-safety floor, and every per-unit profit
+   * figure elsewhere in the app all read that number and must keep meaning
+   * exactly what they mean today). This is a second, clearly separate
+   * figure: all-time actual profit minus all-time ad spend, the honest
+   * "after marketing" bottom line, shown alongside — never instead of —
+   * Actual profit above. Both are all-time totals (Dashboard doesn't
+   * currently scope Actual profit to a month either), so the two subtract
+   * cleanly against the same period.
+   */
+  const totalAdSpend = useMemo(
+    () => (adSpend || []).reduce((sum, row) => sum + M(row.amount_php), 0),
+    [adSpend],
+  );
+  const netProfit = d.actualProfit - totalAdSpend;
 
   const activity = useMemo(() => {
     const rows = [];
@@ -301,6 +330,50 @@ export default function Dashboard() {
             </div>
           )}
         </motion.div>
+
+        {/* Own card, not folded into the one above — Actual profit there
+            stays exactly what every other feature (batch profitability,
+            the pricing-safety floor, per-unit profit) already reads it as.
+            Only appears once there's actually ad spend to net against;
+            otherwise it would just repeat Actual profit under a new name. */}
+        {totalAdSpend > 0 && (
+          <motion.button
+            variants={listChild}
+            type="button"
+            onClick={() => navigate("/ad-spend")}
+            className="card mt-2 w-full p-3.5 text-left transition-transform duration-150 active:scale-[0.99] sm:p-4"
+          >
+            <p className="text-[15px] font-semibold">Net profit</p>
+            <p className="mt-0.5 text-micro leading-snug text-ink-3">
+              Actual profit, after ad spend — never used elsewhere in the app.
+            </p>
+            <dl className="mt-3 space-y-1.5 border-t border-line-soft pt-3 text-eta">
+              <div className="flex items-baseline justify-between gap-2 xs:gap-3">
+                <dt className="min-w-0 text-ink-3">Actual profit</dt>
+                <dd className="num shrink-0 whitespace-nowrap">
+                  {php(d.actualProfit, { decimals: 0 })}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-2 xs:gap-3">
+                <dt className="min-w-0 text-ink-3">Ad spend</dt>
+                <dd className="num shrink-0 whitespace-nowrap text-ink-2">
+                  −{php(totalAdSpend, { decimals: 0 })}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-2 border-t border-line pt-1.5 text-[15px] font-semibold xs:gap-3">
+                <dt className="min-w-0">Net profit</dt>
+                <dd
+                  className={clsx(
+                    "num shrink-0 whitespace-nowrap",
+                    netProfit < 0 ? "text-clay" : "text-teal",
+                  )}
+                >
+                  <RollingNumber value={php(netProfit, { decimals: 0 })} />
+                </dd>
+              </div>
+            </dl>
+          </motion.button>
+        )}
       </Section>
 
       {d.lowStockCount > 0 && (
