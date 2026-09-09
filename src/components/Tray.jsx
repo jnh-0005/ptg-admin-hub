@@ -303,7 +303,14 @@ export function MorphLabel({ children, className }) {
             initial={{ opacity: 0, y: 6, filter: "blur(2px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: -6, filter: "blur(2px)" }}
-            transition={{ ...spring, stiffness: 500 }}
+            // filter gets its own plain tween, not the shared spring below —
+            // a spring can overshoot past its target on the way to settling
+            // (that's the bounce y/opacity are here for), and overshooting
+            // blur(0px) means a genuinely invalid negative blur radius for a
+            // frame or two (e.g. blur(-0.002px)), which is what was showing
+            // up as a console warning on every character of every morph.
+            // blur has no meaningful "bounce" to lose by tweening it instead.
+            transition={{ ...spring, stiffness: 500, filter: { type: "tween", duration: 0.15 } }}
             className="inline-block"
           >
             {char === " " ? "\u00A0" : char}
